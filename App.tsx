@@ -8,7 +8,23 @@ import Dashboard from './components/Dashboard';
 import ExamView from './components/ExamView';
 import ResultsView from './components/ResultsView';
 
-const GOOGLE_SHEET_GAS_URL = process.env.GOOGLE_SHEET_GAS_URL || ""; 
+/**
+ * Robust check for the GAS URL. 
+ * NOTE: For Vercel/Vite, variables MUST start with VITE_ to be exposed to the client.
+ */
+const getGasUrl = () => {
+  // Check common prefixes used by Vite and other frameworks
+  const env = (import.meta as any).env || (process as any).env || {};
+  return (
+    env.VITE_GOOGLE_SHEET_GAS_URL ||
+    env.GOOGLE_SHEET_GAS_URL ||
+    env.REACT_APP_GOOGLE_SHEET_GAS_URL ||
+    env.NEXT_PUBLIC_GOOGLE_SHEET_GAS_URL ||
+    ""
+  );
+};
+
+const GOOGLE_SHEET_GAS_URL = getGasUrl();
 
 type AppState = 'auth' | 'grade_selection' | 'dashboard' | 'exam' | 'results' | 'review_loading';
 
@@ -146,7 +162,7 @@ const App: React.FC = () => {
   const handleFinancialAction = async (action: 'purchase' | 'subscribe' | 'unsubscribe') => {
     if (!user) return;
     if (!GOOGLE_SHEET_GAS_URL) {
-      alert("Error: Backend URL not configured. If you are testing on Vercel/GitHub, please add GOOGLE_SHEET_GAS_URL to your environment variables.");
+      alert("Error: Backend URL not found. Ensure VITE_GOOGLE_SHEET_GAS_URL is set in Vercel.");
       return;
     }
     setIsProcessingFinancial(true);
@@ -159,7 +175,7 @@ const App: React.FC = () => {
       if (result.success) {
         setUser(result.user);
         localStorage.setItem('eiken_user', JSON.stringify(result.user));
-        alert(result.message || 'Updated! A confirmation has been sent to your registered parent email.');
+        alert(result.message || 'Updated! Confirmation sent to registered email.');
         setShowPurchaseModal(false);
         if (action === 'unsubscribe') setPasswordModalStep('none');
       } else { alert(result.error || 'Failed to process request.'); }
@@ -167,7 +183,6 @@ const App: React.FC = () => {
     finally { setIsProcessingFinancial(false); }
   };
 
-  // Fix: Added handleLogin to update user state and redirect to dashboard
   const handleLogin = (u: User) => {
     setUser(u);
     localStorage.setItem('eiken_user', JSON.stringify(u));
@@ -221,7 +236,6 @@ const App: React.FC = () => {
     finally { setIsLoading(false); }
   };
 
-  // Fix: Added finishExam to process results, update stats/history, and trigger sync
   const finishExam = async (answers: number[], remainingTime: number) => {
     if (!user || !selectedGrade) return;
 
@@ -243,7 +257,6 @@ const App: React.FC = () => {
     const isPassed = (score / total) >= 0.6;
     const durationSeconds = (35 * 60) - remainingTime;
     
-    // Check if it's a target practice by looking at the first question's injected properties
     const isTargetPractice = currentExam.length > 0 && (currentExam[0] as any).isTarget;
     const targetSection = isTargetPractice ? (currentExam[0] as any).targetSection : undefined;
 
@@ -259,10 +272,9 @@ const App: React.FC = () => {
       grade: selectedGrade
     };
 
-    // Update Stats & History
     const now = Date.now();
     const lastStudy = user.stats.lastStudyTimestamp;
-    const isConsecutive = lastStudy > 0 && (now - lastStudy) < 86400000 * 2; // Simple 48h check
+    const isConsecutive = lastStudy > 0 && (now - lastStudy) < 86400000 * 2; 
     
     const newStats: UserStats = {
       ...user.stats,
@@ -317,7 +329,6 @@ const App: React.FC = () => {
     const day = today.getDate();
     const month = today.getMonth();
     const year = today.getFullYear();
-    // Rule: Before 20th = next month. On or after 20th = month after next.
     const targetDate = new Date(year, month + (day < 20 ? 1 : 2), 1);
     return targetDate.toLocaleString('en-US', { month: 'long', year: 'numeric' });
   };

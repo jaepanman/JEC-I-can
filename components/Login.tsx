@@ -7,8 +7,22 @@ interface LoginProps {
   onLogin: (user: User) => void;
 }
 
-const GOOGLE_SHEET_GAS_URL = process.env.GOOGLE_SHEET_GAS_URL || "";
-const SCHOOL_MASTER_PIN = "1101";
+/**
+ * Robust variable detection for Vite/Vercel.
+ * Note: Browser-side code cannot access raw process.env safely on Vercel/Vite 
+ * unless they are prefixed with VITE_.
+ */
+const getEnvVar = (name: string) => {
+  const env = (import.meta as any).env || (process as any).env || {};
+  return (
+    env[`VITE_${name}`] ||
+    env[name] ||
+    ""
+  );
+};
+
+const GOOGLE_SHEET_GAS_URL = getEnvVar('GOOGLE_SHEET_GAS_URL');
+const SCHOOL_MASTER_PIN = getEnvVar('SCHOOL_MASTER_PIN');
 
 const JecLogoSmall = () => (
   <div className="flex items-baseline font-black text-lg tracking-tighter group mr-2">
@@ -43,15 +57,22 @@ const Login: React.FC<LoginProps> = ({ onLogin }) => {
     setSuccess('');
     setIsLoading(true);
 
-    // Configuration Check
+    // Enhanced Configuration Check
     if (!GOOGLE_SHEET_GAS_URL) {
-      setError('Server configuration missing: The GOOGLE_SHEET_GAS_URL environment variable is not set. Please add it to your Vercel/GitHub project settings.');
+      setError(`Configuration missing. IMPORTANT: In Vercel, you must name your environment variable VITE_GOOGLE_SHEET_GAS_URL (not just GOOGLE_SHEET_GAS_URL) and redeploy.`);
       setIsLoading(false);
       return;
     }
 
     try {
       if (mode === 'school') {
+        // Validation for the PIN which is now an env var
+        if (!SCHOOL_MASTER_PIN) {
+          setError('School Master PIN is not configured on the server (VITE_SCHOOL_MASTER_PIN).');
+          setIsLoading(false);
+          return;
+        }
+
         if (schoolPin !== SCHOOL_MASTER_PIN) {
           setError('Invalid School Access PIN.');
           setIsLoading(false);
@@ -169,11 +190,11 @@ const Login: React.FC<LoginProps> = ({ onLogin }) => {
           setPassword('');
           setConfirmPassword('');
         } else {
-          setError(result.error || 'Password reset failed. Please check your information and try again.');
+          setError(result.error || 'Password reset failed.');
         }
       }
     } catch (err) {
-      setError('Connection error. Please check your internet or your GOOGLE_SHEET_GAS_URL setting.');
+      setError('Connection error. Please check your backend deployment URL.');
     } finally {
       setIsLoading(false);
     }
