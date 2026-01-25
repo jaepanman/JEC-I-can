@@ -1,5 +1,6 @@
 
 import React, { useState, useEffect, useRef } from 'react';
+import { SpeedInsights } from '@vercel/speed-insights/react';
 import { User, Question, ExamResult, Badge, MissedQuestionEntry, UserStats, TargetSection, EikenGrade } from './types';
 import { generateFullExam, generateReviewExam, remakeQuestion, generateTargetPractice } from './services/geminiService';
 import { hashPassword } from './utils/crypto';
@@ -643,6 +644,7 @@ const App: React.FC = () => {
           </div>
         )}
       </main>
+      <SpeedInsights />
     </div>
   );
 };
