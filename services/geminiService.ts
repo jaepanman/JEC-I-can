@@ -1,70 +1,69 @@
 
 import { GoogleGenAI, Type } from "@google/genai";
-import { Question, TargetSection, EikenGrade } from "../types";
-
-const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+import { Question, TargetSection, EikenGrade, QuestionType } from "../types";
 
 const GRADE_CONFIGS: Record<EikenGrade, any> = {
   'GRADE_5': {
     instructions: `
-      - LEVEL: Eiken Grade 5 (CEFR A1, Elementary English).
-      - VOCABULARY: Basic verbs (eat, go, see), nouns (family, school, dog, apple), adjectives (big, happy).
-      - GRAMMAR: Present tense only. Pronouns, plurals, basic prepositions (at, in, on).
-      - EXAM STRUCTURE: Total 25 questions.
-        * PART 1 (Vocabulary/Grammar): 15 questions.
-        * PART 2 (Dialogues): 5 questions.
-        * PART 3 (Ordering): 5 questions.
-      - PART 3 SPECIFICS: 
-        * Exactly 4 words/phrases in 'context'. 
-        * Identify 1st and 3rd words. 
-        * Skeleton: '[ 1 ] ( ) [ 3 ] ( )' with punctuation at the end.`,
+      - LEVEL: Eiken Grade 5 (Elementary).
+      - STRUCTURE: 25 questions total.
+      - DIALOGUE (Part 2): Short conversation (2-3 turns). Format turns like:
+        Speaker A: [text]
+        Speaker B: (      )
+        Use '\\n' for new lines between speakers. One turn MUST be a blank '(      )'.
+      - SENTENCE_ORDER (Part 3): 
+        * Context: Exactly 4 numbered English words (e.g., "1. go 2. to 3. I 4. school").
+        * Text: The Japanese translation.
+        * Skeleton: MUST be exactly "[ 1 ] ( ) [ 3 ] ( )". 
+        * Options: Combinations of the word numbers (e.g., "3-1").`,
     totalQuestions: 25,
-    structure: { PART_1: 15, PART_2: 5, PART_3: 5 }
   },
   'GRADE_4': {
     instructions: `
-      - LEVEL: Eiken Grade 4 (CEFR A2, Junior High level).
-      - VOCABULARY: Daily life, shopping, travel, basic hobbies.
-      - GRAMMAR: Past tense, comparative, modal verbs (can, must, will), basic conjunctions.
-      - EXAM STRUCTURE: Total 35 questions.
-        * PART 1: 15 questions.
-        * PART 2: 5 questions.
-        * PART 3: 5 questions.
-        * PART 4: 10 questions.
-      - PART 4 SPECIFICS: Reading comprehension for posters, emails, and short stories.
-      - PART 3 SPECIFICS: 
-        * Exactly 5 words/phrases in 'context'.
-        * Identify 2nd and 4th words.
-        * Skeleton: '( ) [ 2 ] ( ) [ 4 ] ( )' with punctuation at the end.`,
+      - LEVEL: Eiken Grade 4 (Junior High level).
+      - STRUCTURE: 35 questions total.
+      - DIALOGUE (Part 2): Short conversation (2-4 turns). Format turns like:
+        Speaker A: [text]
+        Speaker B: [text]
+        Speaker A: (      )
+        Use '\\n' for new lines between speakers. One turn MUST be a blank '(      )'.
+      - SENTENCE_ORDER (Part 3): 
+        * Context: Exactly 5 numbered English words (e.g., "1. my 2. is 3. friend 4. This 5. best").
+        * Text: The Japanese translation.
+        * Skeleton: MUST be exactly "( ) [ 2 ] ( ) [ 4 ] ( )".
+        * Options: Combinations of the word numbers (e.g., "4-2").`,
     totalQuestions: 35,
-    structure: { PART_1: 15, PART_2: 5, PART_3: 5, PART_4: 10 }
   },
-  'GRADE_3': { instructions: "Eiken Grade 3 level...", totalQuestions: 30, structure: {} },
-  'GRADE_PRE_2': { instructions: "Eiken Grade Pre-2 level...", totalQuestions: 37, structure: {} },
-  'GRADE_2': { instructions: "Eiken Grade 2 level...", totalQuestions: 38, structure: {} },
-  'GRADE_2_PLUS': { instructions: "Eiken Grade 2 Plus level...", totalQuestions: 38, structure: {} },
-  'GRADE_PRE_1': { instructions: "Eiken Grade Pre-1 level...", totalQuestions: 41, structure: {} },
-  'GRADE_1': { instructions: "Eiken Grade 1 level...", totalQuestions: 41, structure: {} },
+  'GRADE_3': { instructions: "Eiken Grade 3 level.", totalQuestions: 30 },
+  'GRADE_PRE_2': { instructions: "Eiken Grade Pre-2 level.", totalQuestions: 37 },
+  'GRADE_2': { instructions: "Eiken Grade 2 level.", totalQuestions: 38 },
+  'GRADE_2_PLUS': { instructions: "Eiken Grade 2 Plus level.", totalQuestions: 38 },
+  'GRADE_PRE_1': { instructions: "Eiken Grade Pre-1 level.", totalQuestions: 41 },
+  'GRADE_1': { instructions: "Eiken Grade 1 level.", totalQuestions: 41 },
 };
 
 const questionSchema = {
   type: Type.OBJECT,
   properties: {
     id: { type: Type.INTEGER },
-    type: { type: Type.STRING, description: "VOCABULARY, DIALOGUE, SENTENCE_ORDER, or READING_COMPREHENSION" },
-    context: { type: Type.STRING, description: "Part 3: numbered words 1-5. Part 4: The full reading passage." },
-    text: { type: Type.STRING, description: "Question text. Part 3 MUST be Japanese meaning. Dialogue use \\n." },
-    skeleton: { type: Type.STRING, description: "Part 3 pattern like ( ) [ 2 ] ( ) [ 4 ] ( )." },
+    type: { 
+      type: Type.STRING, 
+      enum: Object.values(QuestionType),
+      description: "One of: VOCABULARY, DIALOGUE, SENTENCE_ORDER, READING_COMPREHENSION"
+    },
+    context: { type: Type.STRING, description: "Passage or numbered words list. For DIALOGUE, leave null." },
+    text: { type: Type.STRING, description: "Question text. For DIALOGUE, include '\\n' and '(      )'. For ORDERING, Japanese translation." },
+    skeleton: { type: Type.STRING, description: "REQUIRED for SENTENCE_ORDER. Grade 5: '[ 1 ] ( ) [ 3 ] ( )'. Grade 4: '( ) [ 2 ] ( ) [ 4 ] ( )'." },
     options: {
       type: Type.ARRAY,
       items: { type: Type.STRING },
       minItems: 4,
       maxItems: 4,
-      description: "Four choices."
+      description: "Four choices. For ORDERING, use combinations like '1-3'."
     },
     correctAnswer: { type: Type.INTEGER, description: "0-3 index" },
-    explanation: { type: Type.STRING, description: "Japanese explanation including the full English sentence." },
-    category: { type: Type.STRING, description: "Brief category name." }
+    explanation: { type: Type.STRING, description: "Japanese explanation." },
+    category: { type: Type.STRING }
   },
   required: ["id", "type", "text", "options", "correctAnswer", "explanation", "category"]
 };
@@ -75,86 +74,92 @@ const examSchema = {
 };
 
 export async function generateFullExam(grade: EikenGrade = 'GRADE_4'): Promise<Question[]> {
+  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
   const config = GRADE_CONFIGS[grade];
+  
   const prompt = `
     Generate a complete Eiken ${grade.replace('_', ' ')} Reading Exam (${config.totalQuestions} questions) as a raw JSON array.
     
-    ### RULES:
+    ### FORMATTING RULES:
     ${config.instructions}
-    - PART 3 (Sentence Order): 'text' MUST be Japanese. 'context' contains the numbered English words.
-    - PART 4 (Reading): Include passage in 'context'.
-    - DIALOGUES: Use \\n for speaker changes.
-    - DO NOT TRUNCATE. Ensure the JSON array is complete and valid.
+    - DIALOGUES: Start each speaker on a new line. Include a blank '(      )'.
+    - SENTENCE_ORDER: 
+        * MUST include the 'skeleton' string.
+        * 'text' MUST be the Japanese meaning.
+        * 'options' are number pairs (e.g., '1-3').
+    - DO NOT TRUNCATE. Valid JSON only.
   `;
 
   try {
     const response = await ai.models.generateContent({
-      model: "gemini-3-pro-preview", // Upgraded to Pro for complex multi-question generation
+      model: "gemini-3-flash-preview",
       contents: prompt,
       config: {
         responseMimeType: "application/json",
         responseSchema: examSchema as any,
-        temperature: 0.4,
-        maxOutputTokens: 16384, // Increased significantly to avoid truncation of 35-question test
+        temperature: 0.3,
+        maxOutputTokens: 15000, 
+        thinkingConfig: { thinkingBudget: 0 } 
       },
     });
     
     const text = response.text.trim();
-    if (!text) throw new Error("AI returned empty response");
-    return JSON.parse(text);
-  } catch (error) {
-    console.error("Gemini Full Exam Generation Error:", error);
-    throw error;
+    if (!text) throw new Error("Empty response from Gemini");
+    
+    const parsed = JSON.parse(text);
+    return parsed;
+  } catch (error: any) {
+    console.error("GEMINI_SERVICE_ERROR:", error);
+    throw new Error(error?.message || "Failed to communicate with Gemini API");
   }
 }
 
 export async function generateTargetPractice(grade: EikenGrade = 'GRADE_4', section: TargetSection): Promise<Question[]> {
+  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
   const config = GRADE_CONFIGS[grade];
-  let sectionRules = "";
-  let count = 10;
+  let count = section === 'PART_1' ? 15 : section === 'PART_4' ? 10 : 5;
 
-  switch(section) {
-    case 'PART_1': count = 15; sectionRules = "Focus on Vocabulary/Grammar."; break;
-    case 'PART_2': count = 5; sectionRules = "Dialogue completion."; break;
-    case 'PART_3': count = 5; sectionRules = "Sentence ordering with Japanese hints."; break;
-    case 'PART_4': count = 10; sectionRules = "Reading comprehension passages."; break;
-  }
-
-  const prompt = `Generate exactly ${count} Eiken ${grade.replace('_', ' ')} questions for ${section}. Rules: ${config.instructions} ${sectionRules}`;
+  const prompt = `Generate exactly ${count} Eiken ${grade.replace('_', ' ')} questions for ${section}. 
+  Rules: ${config.instructions}`;
 
   try {
     const response = await ai.models.generateContent({
-      model: "gemini-3-pro-preview",
+      model: "gemini-3-flash-preview",
       contents: prompt,
       config: {
         responseMimeType: "application/json",
         responseSchema: examSchema as any,
-        maxOutputTokens: 8192,
+        maxOutputTokens: 8000,
+        thinkingConfig: { thinkingBudget: 0 }
       },
     });
     return JSON.parse(response.text.trim() || "[]");
-  } catch (error) {
-    console.error(`Target Practice Generation Error (${section}):`, error);
-    throw error;
+  } catch (error: any) {
+    console.error(`TARGET_PRACTICE_ERROR (${section}):`, error);
+    throw new Error(error?.message || "Practice generation failed");
   }
 }
 
 export async function remakeQuestion(grade: EikenGrade, original: Question): Promise<Question> {
-  const prompt = `Generate a NEW Eiken ${grade.replace('_', ' ')} question of type ${original.type}. Follow original difficulty.`;
+  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+  const config = GRADE_CONFIGS[grade];
+  const prompt = `Generate a NEW Eiken ${grade.replace('_', ' ')} question of type ${original.type}. 
+  Rules: ${config.instructions}`;
 
   try {
     const response = await ai.models.generateContent({
-      model: "gemini-3-pro-preview",
+      model: "gemini-3-flash-preview",
       contents: prompt,
       config: {
         responseMimeType: "application/json",
         responseSchema: questionSchema as any,
+        thinkingConfig: { thinkingBudget: 0 }
       },
     });
     const newQ = JSON.parse(response.text.trim() || "{}");
     return { ...newQ, id: original.id, type: original.type };
-  } catch (error) {
-    console.error("Remake Question Error:", error);
-    throw error;
+  } catch (error: any) {
+    console.error("REMAKE_QUESTION_ERROR:", error);
+    throw new Error(error?.message || "Remake failed");
   }
 }
