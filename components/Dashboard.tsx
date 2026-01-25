@@ -66,7 +66,7 @@ const ConfirmModal: React.FC<{
           <i className="fa-solid fa-ticket text-jec-yellow"></i>
         </div>
         <h3 className="text-2xl font-black text-slate-800 dark:text-white text-center mb-2">{title}</h3>
-        <p className="text-slate-500 dark:text-slate-400 text-center mb-6 text-sm">Confirm credit usage for this session.</p>
+        <p className="text-slate-500 dark:text-slate-400 text-center mb-6 text-sm">Confirm ticket usage for this session.</p>
         
         <div className="bg-slate-50 dark:bg-slate-700/50 rounded-2xl p-5 mb-8 space-y-3">
           <div className="flex justify-between items-center">
@@ -115,7 +115,8 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onStartExam, onStartTargetP
     ? Math.round(user.history.reduce((acc, h) => acc + (h.score / h.total), 0) / user.history.length * 100)
     : 0;
 
-  const creditsDisplay = user.hasSubscription ? '∞' : user.credits.toFixed(1);
+  // Fix: Ensure school users (non-home users) always see the infinity symbol
+  const creditsDisplay = (!user.isHomeUser || user.hasSubscription) ? '∞' : user.credits.toFixed(1);
   const isExamBlocked = user.isHomeUser && !user.hasSubscription && user.credits < 1;
 
   const handleStartExamClick = () => {
@@ -160,7 +161,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onStartExam, onStartTargetP
         </div>
         <div className="bg-white dark:bg-slate-800 p-6 rounded-[2rem] shadow-sm border border-slate-100 dark:border-slate-700 text-center transition-all hover:shadow-md">
            <p className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest mb-1">Completed</p>
-           <p className="text-3xl font-black text-slate-800 dark:text-slate-100">{user.history.length}</p>
+           <p className="text-3xl font-black text-slate-800 dark:text-white">{user.history.length}</p>
         </div>
         <div className="bg-white dark:bg-slate-800 p-6 rounded-[2rem] shadow-sm border border-slate-100 dark:border-slate-700 text-center transition-all hover:shadow-md">
            <p className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest mb-1">Streak</p>
@@ -179,7 +180,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onStartExam, onStartTargetP
       <section>
         <div className="flex items-center space-x-2 mb-6">
           <i className="fa-solid fa-star text-jec-yellow"></i>
-          <h2 className="text-xl font-black text-slate-800 dark:text-slate-100 tracking-tight">I Can! Challenge</h2>
+          <h2 className="text-xl font-black text-slate-800 dark:text-white tracking-tight">I Can! Challenge</h2>
         </div>
         <div className={`relative overflow-hidden ${isExamBlocked ? 'bg-slate-200 dark:bg-slate-800' : 'bg-indigo-600 dark:bg-indigo-900'} rounded-[3rem] p-8 md:p-12 text-white shadow-2xl transition-all`}>
           <div className="relative z-10 flex flex-col lg:flex-row items-center justify-between gap-10">
@@ -215,7 +216,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onStartExam, onStartTargetP
         <div className="flex items-center justify-between mb-8">
           <div className="flex items-center space-x-2">
             <i className="fa-solid fa-bullseye text-jec-orange"></i>
-            <h2 className="text-xl font-black text-slate-800 dark:text-slate-100 tracking-tight">Skill Training / 弱点補強</h2>
+            <h2 className="text-xl font-black text-slate-800 dark:text-white tracking-tight">Skill Training / 弱点補強</h2>
           </div>
           {user.isHomeUser && (
             <span className="bg-white dark:bg-slate-800 text-slate-500 dark:text-slate-400 text-[10px] font-black uppercase px-4 py-2 rounded-2xl border border-slate-100 dark:border-slate-700 shadow-sm">
@@ -238,7 +239,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onStartExam, onStartTargetP
                   <i className={`fa-solid ${section.icon}`}></i>
                 </div>
                 <div className="flex-1">
-                  <h4 className="font-black text-slate-800 dark:text-slate-100 text-xl leading-tight">{section.title}</h4>
+                  <h4 className="font-black text-slate-800 dark:text-white text-xl leading-tight">{section.title}</h4>
                   <p className="text-slate-400 dark:text-slate-500 text-sm font-bold uppercase tracking-wide mt-1">{section.subtitle}</p>
                 </div>
                 <div className="text-right z-10">
@@ -258,7 +259,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onStartExam, onStartTargetP
       {/* Badges Display */}
       <section className="bg-white dark:bg-slate-800 p-10 rounded-[3rem] shadow-sm border border-slate-100 dark:border-slate-700 transition-all">
         <div className="flex items-center justify-between mb-8">
-           <h3 className="text-xl font-black text-slate-800 dark:text-slate-100 flex items-center tracking-tight">
+           <h3 className="text-xl font-black text-slate-800 dark:text-white flex items-center tracking-tight">
              <i className="fa-solid fa-medal text-jec-yellow mr-3 text-2xl"></i> Achievement Medals
            </h3>
            <span className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest">{user.badges.length} Unlocked</span>

@@ -48,52 +48,52 @@ const PurchaseModal: React.FC<{
   isLoading: boolean;
 }> = ({ onClose, onPurchase, isLoading }) => (
   <div className="fixed inset-0 bg-slate-900/70 backdrop-blur-md z-[200] flex items-center justify-center p-4 animate-fadeIn">
-    <div className="bg-white dark:bg-slate-800 rounded-[3rem] p-8 max-w-2xl w-full shadow-2xl animate-popIn border border-slate-100 dark:border-slate-700">
+    <div className="bg-white dark:bg-slate-800 rounded-[3rem] p-8 max-w-2xl w-full shadow-2xl animate-popIn border border-slate-100 dark:border-slate-700 max-h-[90vh] overflow-y-auto">
       <div className="text-center mb-10">
         <div className="w-16 h-16 bg-indigo-50 dark:bg-indigo-900/30 text-jec-yellow rounded-full flex items-center justify-center mx-auto mb-4 text-3xl">
           <i className="fa-solid fa-ticket"></i>
         </div>
-        <h3 className="text-3xl font-black text-slate-800 dark:text-white">Add Academy Tickets</h3>
-        <p className="text-slate-500 dark:text-slate-400 font-medium italic">Power up your Eiken training session</p>
+        <h3 className="text-3xl font-black text-slate-800 dark:text-white">チケットを追加・定期購読</h3>
+        <p className="text-slate-500 dark:text-slate-400 font-medium italic">英検トレーニングをさらに強化しましょう</p>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
         {/* One-time */}
         <div className="bg-slate-50 dark:bg-slate-700/50 p-8 rounded-[2.5rem] border-2 border-slate-100 dark:border-slate-700 flex flex-col items-center text-center transition-all hover:shadow-lg">
           <div className="text-jec-yellow text-4xl mb-4"><i className="fa-solid fa-ticket"></i></div>
-          <h4 className="text-xl font-black text-slate-800 dark:text-white mb-2">5 Tickets</h4>
+          <h4 className="text-xl font-black text-slate-800 dark:text-white mb-2">5 チケット</h4>
           <p className="text-3xl font-black text-indigo-600 dark:text-indigo-400 mb-6">¥500</p>
           <ul className="text-sm text-slate-500 dark:text-slate-400 mb-8 space-y-2 font-bold">
-            <li><i className="fa-solid fa-check text-jec-green mr-2"></i> 5 Full Exams</li>
-            <li><i className="fa-solid fa-check text-jec-green mr-2"></i> Next Invoice Billing</li>
-            <li><i className="fa-solid fa-check text-jec-green mr-2"></i> No Credit Expiry</li>
+            <li><i className="fa-solid fa-check text-jec-green mr-2"></i> 模擬試験 5回分</li>
+            <li><i className="fa-solid fa-check text-jec-green mr-2"></i> 翌月の月謝と一緒に請求</li>
+            <li><i className="fa-solid fa-check text-jec-green mr-2"></i> 有効期限なし</li>
           </ul>
           <button 
             disabled={isLoading}
             onClick={() => onPurchase('one-time')}
             className="w-full py-4 bg-white dark:bg-slate-800 border-2 border-indigo-600 dark:border-indigo-400 text-indigo-600 dark:text-indigo-400 font-black rounded-2xl hover:bg-indigo-600 hover:text-white transition-all disabled:opacity-50"
           >
-            {isLoading ? <i className="fa-solid fa-circle-notch animate-spin"></i> : 'Purchase Now'}
+            {isLoading ? <i className="fa-solid fa-circle-notch animate-spin"></i> : '購入する'}
           </button>
         </div>
 
         {/* Subscription */}
         <div className="bg-indigo-600 dark:bg-indigo-900 p-8 rounded-[2.5rem] border-2 border-indigo-500 flex flex-col items-center text-center shadow-xl relative overflow-hidden group">
-          <div className="absolute top-4 right-4 bg-jec-yellow text-slate-900 text-[10px] font-black uppercase px-3 py-1 rounded-full animate-bounce">Best Value</div>
+          <div className="absolute top-4 right-4 bg-jec-yellow text-slate-900 text-[10px] font-black uppercase px-3 py-1 rounded-full animate-bounce">おすすめ</div>
           <div className="text-white text-4xl mb-4 group-hover:scale-110 transition-transform"><i className="fa-solid fa-crown"></i></div>
-          <h4 className="text-xl font-black text-white mb-2">Monthly "I Can!"</h4>
-          <p className="text-3xl font-black text-jec-yellow mb-6">¥1,000<span className="text-xs text-white opacity-80">/mo</span></p>
+          <h4 className="text-xl font-black text-white mb-2">月額プラン「I Can!」</h4>
+          <p className="text-3xl font-black text-jec-yellow mb-6">¥1,000<span className="text-xs text-white opacity-80">/月</span></p>
           <ul className="text-sm text-indigo-100 dark:text-indigo-200 mb-8 space-y-2 font-bold">
-            <li><i className="fa-solid fa-plus text-jec-green mr-2"></i> 15 Tickets / Month</li>
-            <li><i className="fa-solid fa-shield text-jec-yellow mr-2"></i> Max 45 Saved</li>
-            <li><i className="fa-solid fa-receipt text-white opacity-70 mr-2"></i> Invoiced on 20th</li>
+            <li><i className="fa-solid fa-plus text-jec-green mr-2"></i> 毎月 15 チケット付与</li>
+            <li><i className="fa-solid fa-shield text-jec-yellow mr-2"></i> 最大 45 まで貯蓄可能</li>
+            <li><i className="fa-solid fa-receipt text-white opacity-70 mr-2"></i> 毎月20日に請求</li>
           </ul>
           <button 
             disabled={isLoading}
             onClick={() => onPurchase('subscription')}
             className="w-full py-4 bg-jec-yellow text-slate-900 font-black rounded-2xl shadow-lg hover:bg-white transition-all transform hover:scale-105 disabled:opacity-50"
           >
-            {isLoading ? <i className="fa-solid fa-circle-notch animate-spin"></i> : 'Subscribe Now'}
+            {isLoading ? <i className="fa-solid fa-circle-notch animate-spin"></i> : '申し込む'}
           </button>
         </div>
       </div>
@@ -102,11 +102,11 @@ const PurchaseModal: React.FC<{
         <p className="text-[11px] font-bold text-amber-700 dark:text-amber-400 leading-relaxed">
           <i className="fa-solid fa-circle-info mr-2"></i>
           購入・継続の確認メールは、登録された保護者用メールアドレスに送信されます。<br/>
-          Invoices are sent on the 20th. Subscription cancellation rule applies (see settings).
+          請求書は20日に送付されます。解約ルールについては設定をご確認ください。
         </p>
       </div>
 
-      <button onClick={onClose} className="w-full text-slate-400 hover:text-slate-600 dark:text-slate-500 dark:hover:text-slate-300 font-bold transition-colors">Maybe Later</button>
+      <button onClick={onClose} className="w-full text-slate-400 hover:text-slate-600 dark:text-slate-500 dark:hover:text-slate-300 font-bold transition-colors">閉じる</button>
     </div>
   </div>
 );
@@ -354,7 +354,9 @@ const App: React.FC = () => {
                   title="Buy Tickets"
                 >
                   <i className="fa-solid fa-ticket text-jec-yellow text-sm group-hover:scale-110 transition-transform"></i>
-                  <span className="text-sm font-black text-white">{user.hasSubscription ? '∞' : user.credits.toFixed(1)}</span>
+                  <span className="text-sm font-black text-white">
+                    {(!user.isHomeUser || user.hasSubscription) ? '∞' : user.credits.toFixed(1)}
+                  </span>
                 </button>
                 <div className="hidden md:flex flex-col items-end">
                   <span className="font-bold text-white text-xs">Hi, {user.name}</span>
@@ -415,7 +417,7 @@ const App: React.FC = () => {
               <form onSubmit={handlePasswordUpdate} className="space-y-4 animate-fadeIn">
                 <div className="text-center mb-6">
                   <div className="w-16 h-16 bg-indigo-50 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400 rounded-full flex items-center justify-center mx-auto mb-4 text-2xl"><i className="fa-solid fa-lock"></i></div>
-                  <h3 className="text-2xl font-black text-slate-800 dark:text-slate-100 tracking-tight">New Password</h3>
+                  <h3 className="text-2xl font-black text-slate-800 dark:text-white tracking-tight">New Password</h3>
                 </div>
                 {passwordError && <div className="p-3 bg-rose-50 text-rose-600 text-xs font-bold rounded-xl mb-4">{passwordError}</div>}
                 <div className="space-y-4">
