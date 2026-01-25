@@ -97,7 +97,7 @@ export async function generateFullExam(grade: EikenGrade = 'GRADE_4'): Promise<Q
       config: {
         responseMimeType: "application/json",
         responseSchema: examSchema as any,
-        temperature: 0.3,
+        temperature: 0.2, // Lower temperature for maximum precision
         maxOutputTokens: 15000, 
         thinkingConfig: { thinkingBudget: 0 } 
       },

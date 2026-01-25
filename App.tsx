@@ -1,6 +1,6 @@
 
-import React, { useState, useEffect, useRef } from 'react';
-import { User, Question, ExamResult, Badge, MissedQuestionEntry, UserStats, TargetSection, EikenGrade } from './types';
+import React, { useState, useEffect } from 'react';
+import { User, Question, ExamResult, UserStats, TargetSection, EikenGrade } from './types';
 import { generateFullExam, remakeQuestion, generateTargetPractice } from './services/geminiService';
 import { hashPassword } from './utils/crypto';
 import Login from './components/Login';
@@ -53,7 +53,6 @@ const PurchaseModal: React.FC<{
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
-        {/* One-time */}
         <div className="bg-slate-50 dark:bg-slate-700/50 p-8 rounded-[2.5rem] border-2 border-slate-100 dark:border-slate-700 flex flex-col items-center text-center transition-all hover:shadow-lg">
           <div className="text-jec-yellow text-4xl mb-4"><i className="fa-solid fa-ticket"></i></div>
           <h4 className="text-xl font-black text-slate-800 dark:text-white mb-2">5枚セット</h4>
@@ -72,7 +71,6 @@ const PurchaseModal: React.FC<{
           </button>
         </div>
 
-        {/* Subscription */}
         <div className="bg-indigo-600 dark:bg-indigo-900 p-8 rounded-[2.5rem] border-2 border-indigo-500 flex flex-col items-center text-center shadow-xl relative overflow-hidden group">
           <div className="absolute top-4 right-4 bg-jec-yellow text-slate-900 text-[10px] font-black uppercase px-3 py-1 rounded-full animate-bounce">お得なプラン</div>
           <div className="text-white text-4xl mb-4 group-hover:scale-110 transition-transform"><i className="fa-solid fa-crown"></i></div>
@@ -202,9 +200,9 @@ const App: React.FC = () => {
         await syncToSheet(user.id, { credits: newCredits });
       }
       setView('exam');
-    } catch (err) { 
+    } catch (err: any) { 
       console.error("EXAM_GEN_FAILED", err);
-      alert("問題の作成に失敗しました。AIの応答が長すぎるか、接続が不安定です。もう一度お試しください。"); 
+      alert(`問題の作成に失敗しました:\n${err.message || 'Unknown Error'}`); 
       setView('dashboard'); 
     }
     finally { setIsLoading(false); }
@@ -231,9 +229,9 @@ const App: React.FC = () => {
       const customQuestions = questions.map(q => ({ ...q, isTarget: true, targetSection: section }));
       setCurrentExam(customQuestions);
       setView('exam');
-    } catch (err) { 
+    } catch (err: any) { 
       console.error("PRACTICE_GEN_FAILED", err);
-      alert("問題の作成に失敗しました。"); 
+      alert(`練習問題の作成に失敗しました:\n${err.message || 'Unknown Error'}`); 
       setView('dashboard'); 
     }
     finally { setIsLoading(false); }
@@ -244,14 +242,8 @@ const App: React.FC = () => {
 
     const total = currentExam.length;
     let score = 0;
-    const missedQuestions: MissedQuestionEntry[] = [];
-
     currentExam.forEach((q, idx) => {
-      if (answers[idx] === q.correctAnswer) {
-        score++;
-      } else {
-        missedQuestions.push({ question: q, userAnswer: answers[idx] });
-      }
+      if (answers[idx] === q.correctAnswer) score++;
     });
 
     const isPassed = (score / total) >= 0.6;
@@ -265,7 +257,9 @@ const App: React.FC = () => {
       isPassed,
       timestamp: Date.now(),
       durationSeconds,
-      missedQuestions,
+      missedQuestions: currentExam
+        .map((q, i) => ({ question: q, userAnswer: answers[i] }))
+        .filter(entry => entry.userAnswer !== entry.question.correctAnswer),
       isTargetPractice,
       targetSection,
       grade: selectedGrade
@@ -315,7 +309,7 @@ const App: React.FC = () => {
   };
 
   return (
-    <div className="min-h-screen bg-slate-50 dark:bg-slate-900 transition-colors duration-300">
+    <div className="min-h-screen bg-slate-50 dark:bg-slate-900 transition-colors duration-300 font-['Lexend']">
       <header className="bg-indigo-600 dark:bg-indigo-950 text-white p-4 shadow-xl sticky top-0 z-50 border-b border-indigo-400/20">
         <div className="max-w-6xl mx-auto flex justify-between items-center">
           <div className="flex items-center cursor-pointer" onClick={() => user && setView('grade_selection')}>
@@ -417,8 +411,12 @@ const App: React.FC = () => {
         {view === 'dashboard' && user && <Dashboard user={user} onStartExam={startFullExam} onStartTargetPractice={startTargetPracticeAction} />}
         {view === 'exam' && <ExamView questions={currentExam} onFinish={finishExam} onRemakeQuestion={async (idx) => {
           if (!selectedGrade) return;
-          const newQ = await remakeQuestion(selectedGrade, currentExam[idx]);
-          const updated = [...currentExam]; updated[idx] = newQ; setCurrentExam(updated);
+          try {
+             const newQ = await remakeQuestion(selectedGrade, currentExam[idx]);
+             const updated = [...currentExam]; updated[idx] = newQ; setCurrentExam(updated);
+          } catch (err: any) {
+             alert(`再作成に失敗しました:\n${err.message}`);
+          }
         }} />}
         {view === 'results' && lastResult && <ResultsView result={lastResult} onRetry={startFullExam} onDashboard={() => setView('grade_selection')} onStartReview={() => {}} />}
         {view === 'review_loading' && (
@@ -426,7 +424,7 @@ const App: React.FC = () => {
             <div className="animate-spin rounded-full h-24 w-24 border-t-4 border-jec-yellow border-indigo-600"></div>
             <div className="text-center">
               <h2 className="text-2xl font-black text-slate-800 dark:text-white">Generating Content / 問題作成中</h2>
-              <p className="text-indigo-600 dark:text-indigo-400 font-bold max-w-xs mx-auto mt-2">JEC AI is building your session. This usually takes 30-60 seconds.</p>
+              <p className="text-indigo-600 dark:text-indigo-400 font-bold max-w-xs mx-auto mt-2">Connecting to Gemini AI... This usually takes 15-30 seconds.</p>
             </div>
           </div>
         )}
