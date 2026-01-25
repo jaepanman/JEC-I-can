@@ -135,6 +135,16 @@ const App: React.FC = () => {
     }
   }, []);
 
+  const ensureApiKey = async () => {
+    // @ts-ignore
+    if (window.aistudio && !(await window.aistudio.hasSelectedApiKey())) {
+      // @ts-ignore
+      await window.aistudio.openSelectKey();
+      return true;
+    }
+    return false;
+  };
+
   const syncToSheet = async (userId: string, updates: any) => {
     if (!GOOGLE_SHEET_GAS_URL || userId.startsWith('school_')) return;
     try {
@@ -182,6 +192,9 @@ const App: React.FC = () => {
 
   const startFullExam = async () => {
     if (!selectedGrade || !user) return;
+    
+    await ensureApiKey();
+
     const isSchool = user.id.startsWith('school_') || !user.isHomeUser;
     if (!isSchool && !user.hasSubscription && user.credits < 1) {
       alert("チケットが不足しています。");
@@ -202,6 +215,10 @@ const App: React.FC = () => {
       setView('exam');
     } catch (err: any) { 
       console.error("EXAM_GEN_FAILED", err);
+      if (err.message?.includes('Requested entity was not found') || err.message?.includes('400')) {
+        // @ts-ignore
+        if (window.aistudio) await window.aistudio.openSelectKey();
+      }
       alert(`問題の作成に失敗しました:\n${err.message || 'Unknown Error'}`); 
       setView('dashboard'); 
     }
@@ -210,6 +227,9 @@ const App: React.FC = () => {
 
   const startTargetPracticeAction = async (section: TargetSection) => {
     if (!selectedGrade || !user) return;
+    
+    await ensureApiKey();
+
     const isSchool = user.id.startsWith('school_') || !user.isHomeUser;
     if (!isSchool && !user.hasSubscription && user.credits < 0.2) {
       alert("チケットが不足しています。");
@@ -309,8 +329,8 @@ const App: React.FC = () => {
   };
 
   return (
-    <div className="min-h-screen bg-slate-50 dark:bg-slate-900 transition-colors duration-300 font-['Lexend']">
-      <header className="bg-indigo-600 dark:bg-indigo-950 text-white p-4 shadow-xl sticky top-0 z-50 border-b border-indigo-400/20">
+    <div className="min-h-screen bg-slate-50 dark:bg-[#0f172a] transition-colors duration-300 font-['Lexend']">
+      <header className="bg-indigo-600 dark:bg-[#1a2233] text-white p-4 shadow-xl sticky top-0 z-50 border-b border-indigo-400/20">
         <div className="max-w-6xl mx-auto flex justify-between items-center">
           <div className="flex items-center cursor-pointer" onClick={() => user && setView('grade_selection')}>
             <JecLogo />
