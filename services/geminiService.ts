@@ -84,27 +84,26 @@ export async function generateFullExam(grade: EikenGrade = 'GRADE_4'): Promise<Q
     - PART 3 (Sentence Order): 'text' MUST be Japanese. 'context' contains the numbered English words.
     - PART 4 (Reading): Include passage in 'context'.
     - DIALOGUES: Use \\n for speaker changes.
-    - DO NOT truncate the response. Ensure all ${config.totalQuestions} questions are complete JSON objects.
+    - DO NOT TRUNCATE. Ensure the JSON array is complete and valid.
   `;
 
   try {
     const response = await ai.models.generateContent({
-      model: "gemini-3-flash-preview", // Switched to Flash for reliability with long payloads
+      model: "gemini-3-pro-preview", // Upgraded to Pro for complex multi-question generation
       contents: prompt,
       config: {
         responseMimeType: "application/json",
         responseSchema: examSchema as any,
-        temperature: 0.5,
-        maxOutputTokens: 8192, // Increase limit to prevent truncation
-        thinkingConfig: { thinkingBudget: 1024 } 
+        temperature: 0.4,
+        maxOutputTokens: 16384, // Increased significantly to avoid truncation of 35-question test
       },
     });
     
     const text = response.text.trim();
-    if (!text) throw new Error("Empty AI response");
+    if (!text) throw new Error("AI returned empty response");
     return JSON.parse(text);
   } catch (error) {
-    console.error("Gemini Generation Error:", error);
+    console.error("Gemini Full Exam Generation Error:", error);
     throw error;
   }
 }
@@ -125,18 +124,17 @@ export async function generateTargetPractice(grade: EikenGrade = 'GRADE_4', sect
 
   try {
     const response = await ai.models.generateContent({
-      model: "gemini-3-flash-preview",
+      model: "gemini-3-pro-preview",
       contents: prompt,
       config: {
         responseMimeType: "application/json",
         responseSchema: examSchema as any,
-        maxOutputTokens: 4096,
-        thinkingConfig: { thinkingBudget: 512 }
+        maxOutputTokens: 8192,
       },
     });
     return JSON.parse(response.text.trim() || "[]");
   } catch (error) {
-    console.error(`Target Practice Error (${section}):`, error);
+    console.error(`Target Practice Generation Error (${section}):`, error);
     throw error;
   }
 }
@@ -146,7 +144,7 @@ export async function remakeQuestion(grade: EikenGrade, original: Question): Pro
 
   try {
     const response = await ai.models.generateContent({
-      model: "gemini-3-flash-preview",
+      model: "gemini-3-pro-preview",
       contents: prompt,
       config: {
         responseMimeType: "application/json",
@@ -156,7 +154,7 @@ export async function remakeQuestion(grade: EikenGrade, original: Question): Pro
     const newQ = JSON.parse(response.text.trim() || "{}");
     return { ...newQ, id: original.id, type: original.type };
   } catch (error) {
-    console.error("Remake Error:", error);
+    console.error("Remake Question Error:", error);
     throw error;
   }
 }
