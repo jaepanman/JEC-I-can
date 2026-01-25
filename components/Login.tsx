@@ -43,16 +43,17 @@ const Login: React.FC<LoginProps> = ({ onLogin }) => {
     setSuccess('');
     setIsLoading(true);
 
+    // Configuration Check
+    if (!GOOGLE_SHEET_GAS_URL) {
+      setError('Server configuration missing: The GOOGLE_SHEET_GAS_URL environment variable is not set. Please add it to your Vercel/GitHub project settings.');
+      setIsLoading(false);
+      return;
+    }
+
     try {
       if (mode === 'school') {
         if (schoolPin !== SCHOOL_MASTER_PIN) {
           setError('Invalid School Access PIN.');
-          setIsLoading(false);
-          return;
-        }
-
-        if (!GOOGLE_SHEET_GAS_URL) {
-          setError('Server configuration missing.');
           setIsLoading(false);
           return;
         }
@@ -73,11 +74,6 @@ const Login: React.FC<LoginProps> = ({ onLogin }) => {
         }
       } 
       else if (mode === 'home_register') {
-        if (!GOOGLE_SHEET_GAS_URL) {
-          setError('Server configuration missing.');
-          setIsLoading(false);
-          return;
-        }
         if (email !== verifyEmail) {
           setError('Emails do not match.');
           setIsLoading(false);
@@ -125,11 +121,6 @@ const Login: React.FC<LoginProps> = ({ onLogin }) => {
         }
       }
       else if (mode === 'home_login') {
-        if (!GOOGLE_SHEET_GAS_URL) {
-          setError('Server configuration missing.');
-          setIsLoading(false);
-          return;
-        }
         const hashedPassword = await hashPassword(password);
         
         const response = await fetch(GOOGLE_SHEET_GAS_URL, {
@@ -182,7 +173,7 @@ const Login: React.FC<LoginProps> = ({ onLogin }) => {
         }
       }
     } catch (err) {
-      setError('Connection error. Please check your internet.');
+      setError('Connection error. Please check your internet or your GOOGLE_SHEET_GAS_URL setting.');
     } finally {
       setIsLoading(false);
     }
@@ -227,7 +218,7 @@ const Login: React.FC<LoginProps> = ({ onLogin }) => {
       {error && (
         <div className="mb-6 p-4 bg-rose-50 dark:bg-rose-900/30 border border-rose-100 dark:border-rose-800 text-rose-600 dark:text-rose-400 text-xs font-bold rounded-2xl flex items-center animate-shake">
           <i className="fa-solid fa-circle-exclamation mr-3 text-lg"></i>
-          {error}
+          <span className="leading-relaxed">{error}</span>
         </div>
       )}
 
