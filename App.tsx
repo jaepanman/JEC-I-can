@@ -221,6 +221,7 @@ const App: React.FC = () => {
     setUser(updatedUser);
     localStorage.setItem('eiken_user', JSON.stringify(updatedUser));
     
+    // Non-blocking sync
     syncUserToGas(updatedUser, 'updateStats');
 
     setView('generating');
@@ -244,6 +245,8 @@ const App: React.FC = () => {
       }
       setView('exam');
     } catch (err) {
+      console.error("EXAM_START_ERROR:", err);
+      alert("Failed to generate questions. Please check your internet and API Key. / 問題の生成に失敗しました。設定を確認してください。");
       setView('dashboard');
     }
   };
@@ -271,6 +274,7 @@ const App: React.FC = () => {
       localStorage.setItem('eiken_user', JSON.stringify(updatedUser));
       syncUserToGas(updatedUser, 'updateStats');
     } catch (err) {
+      console.error("REMAKE_ERROR:", err);
       alert("問題の再生成に失敗しました。");
     }
   };
@@ -313,7 +317,7 @@ const App: React.FC = () => {
     const addBadge = (id: string, name: string, desc: string, jp: string, icon: string, color: string, canLevelUp: boolean = true) => {
       const existingIdx = newBadges.findIndex(b => b.id === id);
       if (existingIdx !== -1) {
-        if (!canLevelUp) return; // Do not increment count for one-time badges
+        if (!canLevelUp) return; 
         newBadges[existingIdx] = { ...newBadges[existingIdx], count: newBadges[existingIdx].count + 1, earnedAt: now };
         newlyEarnedBadges.push(newBadges[existingIdx]);
       } else {
@@ -325,7 +329,6 @@ const App: React.FC = () => {
 
     const isPassed = (score / currentExam.length) >= 0.6;
 
-    // Track Thematic Progress
     if (isTarget && targetSection && currentTheme && isPassed) {
       if (!updatedStats.thematicProgress) updatedStats.thematicProgress = {};
       if (!updatedStats.thematicProgress[currentTheme]) updatedStats.thematicProgress[currentTheme] = {};
@@ -340,22 +343,18 @@ const App: React.FC = () => {
       }
     }
 
-    // First Step (No Level Up)
     addBadge('first_step', 'First Step', 'Complete your first session.', '初めてのトレーニングを完了しました。', 'fa-shoe-prints', 'bg-blue-500 text-white', false);
 
-    // DAILY LIMITS & STREAKS
     const historyToday = [...user.history, { timestamp: now, isTargetPractice: isTarget, isPassed, targetSection }].filter(h => 
       new Date(h.timestamp).toISOString().split('T')[0] === today
     );
 
-    // Daily Sweep
     const requiredSections = selectedGrade === 'GRADE_5' ? ['PART_1', 'PART_2', 'PART_3'] : ['PART_1', 'PART_2', 'PART_3', 'PART_4'];
     const partsPassedToday = new Set(historyToday.filter(h => h.isTargetPractice && h.isPassed).map(h => h.targetSection));
     if (requiredSections.every(s => partsPassedToday.has(s as TargetSection))) {
       addBadge('daily_sweep', 'Daily Sweep', 'Pass all skill sections in one day.', '1日で全スキルの練習に合格しました！', 'fa-broom', 'bg-emerald-600 text-white');
     }
 
-    // Skill Milestones (5 and 10 sessions per section in one day)
     requiredSections.forEach(s => {
       const sectionCount = historyToday.filter(h => h.isTargetPractice && h.targetSection === s).length;
       const partName = s.replace('PART_', 'Part ');
@@ -433,7 +432,7 @@ const App: React.FC = () => {
       ? (selectedGrade === 'GRADE_5' ? ['PART_1', 'PART_2', 'PART_3'] : ['PART_1', 'PART_2', 'PART_3', 'PART_4'])
       : [genProgress.section as TargetSection];
     
-    if (!isCurrentSessionMock) return 50; // Simple 50% for targeted since it's only 1 section
+    if (!isCurrentSessionMock) return 50; 
 
     const total = sections.length;
     const currentIdx = sections.indexOf(genProgress.section as TargetSection);

@@ -1,5 +1,5 @@
 
-import { GoogleGenAI, Type, GenerateContentResponse } from "@google/genai";
+import { GoogleGenAI, Type } from "@google/genai";
 import { Question, TargetSection, EikenGrade, QuestionType } from "../types";
 
 const AUTHENTIC_THEMES = [
@@ -44,7 +44,7 @@ Simple grammar: basic verbs, daily activities. All blanks must be "(___)".`;
 
 const GRADE_4_PART_4_PROMPT = `Section 4: Reading Comprehension (Questions 26–35)
 CRITICAL FORMATTING RULES FOR 'context' FIELD:
-- DO NOT use any HTML tags (e.g., <br>, <div>, <b>).
+- DO NOT use any HTML tags.
 - USE ONLY standard newline characters (\\n) for layout.
 
 - FOR FLYERS/NOTICES (Q26–27): Format like a professional paper flyer.
@@ -111,6 +111,34 @@ const questionSchema = {
   required: ["type", "text", "options", "correctAnswer", "explanation"]
 };
 
+/**
+ * Utility to extract clean JSON from a potentially markdown-formatted string.
+ */
+function extractJson(text: string): any {
+  try {
+    const trimmed = text.trim();
+    // Look for first [ and last ]
+    const start = trimmed.indexOf('[');
+    const end = trimmed.lastIndexOf(']');
+    
+    if (start !== -1 && end !== -1 && end > start) {
+      return JSON.parse(trimmed.substring(start, end + 1));
+    }
+    
+    // Fallback for object if array check fails
+    const objStart = trimmed.indexOf('{');
+    const objEnd = trimmed.lastIndexOf('}');
+    if (objStart !== -1 && objEnd !== -1 && objEnd > objStart) {
+      return JSON.parse(trimmed.substring(objStart, objEnd + 1));
+    }
+
+    return JSON.parse(trimmed);
+  } catch (e) {
+    console.error("JSON Parse Error:", e, "Raw text:", text);
+    throw new Error("Invalid response format from AI.");
+  }
+}
+
 export async function* streamQuestions(grade: EikenGrade, section: TargetSection, theme?: string): AsyncGenerator<Question> {
   const config = GRADE_CONFIGS[grade] || GRADE_CONFIGS['GRADE_4']!;
   const count = config.counts[section] || 5;
@@ -142,6 +170,8 @@ export async function* streamQuestions(grade: EikenGrade, section: TargetSection
     
     Return ONLY a JSON array matching the provided schema. 'type' MUST be "${targetType}".`;
 
+  // Always use process.env.API_KEY as per instructions. 
+  // We ensure it is bridged from VITE_API_KEY in index.tsx.
   const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
   
   try {
@@ -155,7 +185,7 @@ export async function* streamQuestions(grade: EikenGrade, section: TargetSection
       },
     });
 
-    const questions: any[] = JSON.parse(response.text);
+    const questions: any[] = extractJson(response.text);
     for (const q of questions) {
       yield { ...q, id: Math.random(), category: section, type: targetType };
     }
@@ -199,6 +229,6 @@ export async function remakeQuestion(grade: EikenGrade, original: Question): Pro
     },
   });
 
-  const newQ = JSON.parse(response.text);
+  const newQ = extractJson(response.text);
   return { ...newQ, id: original.id, category: original.category, type: targetType };
 }
