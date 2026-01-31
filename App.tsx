@@ -1,125 +1,72 @@
 
 import React, { useState, useEffect } from 'react';
-import { User, Question, ExamResult, UserStats, TargetSection, EikenGrade } from './types';
-import { generateFullExam, remakeQuestion, generateTargetPractice } from './services/geminiService';
+import { User, Question, ExamResult, UserStats, TargetSection, EikenGrade, Badge } from './types';
+import { streamQuestions, remakeQuestion } from './services/geminiService';
 import { hashPassword } from './utils/crypto';
 import Login from './components/Login';
 import Dashboard from './components/Dashboard';
 import ExamView from './components/ExamView';
 import ResultsView from './components/ResultsView';
+import ShopView from './components/ShopView';
 
 const getGasUrl = () => {
   const env = (import.meta as any).env || (process as any).env || {};
-  return (
-    env.VITE_GOOGLE_SHEET_GAS_URL ||
-    env.GOOGLE_SHEET_GAS_URL ||
-    env.REACT_APP_GOOGLE_SHEET_GAS_URL ||
-    env.NEXT_PUBLIC_GOOGLE_SHEET_GAS_URL ||
-    ""
-  );
+  return env.VITE_GOOGLE_SHEET_GAS_URL || env.GOOGLE_SHEET_GAS_URL || "";
 };
 
 const GOOGLE_SHEET_GAS_URL = getGasUrl();
 
-type AppState = 'auth' | 'grade_selection' | 'dashboard' | 'exam' | 'results' | 'review_loading';
-
-const EIKEN_GRADES: { id: EikenGrade; label: string; jpLabel: string; active: boolean; color: string }[] = [
-  { id: 'GRADE_5', label: 'Grade 5', jpLabel: '英検5級', active: true, color: 'jec-green' },
-  { id: 'GRADE_4', label: 'Grade 4', jpLabel: '英検4級', active: true, color: 'jec-yellow' },
-  { id: 'GRADE_3', label: 'Grade 3', jpLabel: '英検3級', active: false, color: 'jec-orange' },
+const HINTS = [
+  "【大問1】カッコの前に to があったら… 動詞の原形（s, ed, ingがつかない形）を選ぶ合図かも！to play や to go の形を疑おう。",
+  "【大問1】enjoy や finish の後ろは… ing形（動名詞）が正解！「～することを楽しむ/終える」は enjoy playing の形になります。",
+  "【大問1】can, will, must の後ろは… 必ず動詞の原形！can swims ❌ → can swim ⭕ です。",
+  "【大問1】文の最後に yesterday や last ~ があったら… 過去形を選ぼう！went や played など、過去を表す形を探してね。",
+  "【大問1】文の最後に tomorrow や next ~ があったら… 未来の文です。will や be going to が正解のヒント！",
+  "【大問1】「～よりも（比較）」の文なら… than を探そう！taller than（～より背が高い）のように、er形の形容詞と一緒に使われます。",
+  "【大問1】「一番～（最上級）」の文なら… the + est の形を探そう！the oldest や the best が定番です。",
+  "【大問1】曜日・日付・時間の前置詞 曜日は on Sunday、時刻は at 7:00。セットで覚えよう！",
+  "【大問2】How are you? と聞かれたら… I'm fine. や I'm great. など、体調や気分を答えている選択肢が正解です。",
+  "【大問2】May I ~?（～してもいいですか）と聞かれたら… Sure. や Yes. で許可するか、Sorry, you can't. で断るパターンが多いよ。",
+  "【大問2】Thank you. への返しは… You're welcome.（どういたしまして）や No problem. が定番の正解です。",
+  "【大問2】What time ~? と聞かれたら… At 5:00. のように、時刻が含まれている選択肢を探そう。",
+  "【大問3】並べ替え問題のコツ まずは日本語を見て「誰が（主語）」「どうする（動詞）」のペアを英語で作ってみよう。",
+  "【大問3】熟語のセットを先に作ろう a lot of, look for, go to bed など、知っている熟語を先につなげると選択肢が減って楽になるよ！",
+  "【大問3】「～があります/いました」という日本文なら… There is や There was の形を疑おう。その次は「場所」を表す言葉が最後に来ることが多いよ。",
+  "【大問3】語順のルール：形容詞と名詞 「大きい犬」は dog big ❌ ではなく big dog ⭕。形容詞は名詞の前に置こう。",
+  "【大問4】[4A] お知らせ・ポスター問題 まずは数字（日付、時間、値段）に注目！「何時に始まりますか？」「いくらですか？」はよく出る問題です。",
+  "【大問4】[4B] Eメール問題 最初に From（誰から）と To（誰へ）を見て、人間関係を整理してから読み始めよう。",
+  "【大問4】[4C] 物語文のコツ 問題（No.31～35）の順番は、物語の進む順番と同じです。No.31の答えは物語の最初の方にあるよ！",
+  "【大問4】分からない単語があっても… 止まらないで！前後の文から意味を予想して読み進めよう。英検4級は全体の流れをつかむことが大切です。"
 ];
 
-const JecLogo = () => (
-  <div className="flex items-baseline font-black text-2xl tracking-tighter mr-3 group">
-    <span className="text-jec-green transition-transform group-hover:-translate-y-0.5">J</span>
-    <span className="text-jec-yellow transition-transform group-hover:-translate-y-1 delay-75">E</span>
-    <span className="text-jec-orange transition-transform group-hover:-translate-y-0.5 delay-150">C</span>
-  </div>
-);
+type AppState = 'auth' | 'grade_selection' | 'dashboard' | 'shop' | 'exam' | 'results' | 'generating';
 
-const PurchaseModal: React.FC<{ 
-  onClose: () => void; 
-  onPurchase: (type: 'one-time' | 'subscription') => void;
-  isLoading: boolean;
-}> = ({ onClose, onPurchase, isLoading }) => (
-  <div className="fixed inset-0 bg-slate-900/70 backdrop-blur-md z-[200] flex items-center justify-center p-4 animate-fadeIn">
-    <div className="bg-white dark:bg-slate-800 rounded-[3rem] p-6 md:p-10 max-w-2xl w-full shadow-2xl animate-popIn border border-slate-100 dark:border-slate-700 max-h-[90vh] overflow-y-auto">
-      <div className="text-center mb-8">
-        <div className="w-16 h-16 bg-indigo-50 dark:bg-indigo-900/30 text-jec-yellow rounded-full flex items-center justify-center mx-auto mb-4 text-3xl">
-          <i className="fa-solid fa-ticket"></i>
-        </div>
-        <h3 className="text-3xl font-black text-slate-800 dark:text-white">アカデミー・チケットの追加</h3>
-        <p className="text-slate-500 dark:text-slate-400 font-medium mt-2 italic">英検トレーニングをフル活用しましょう</p>
-      </div>
-
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
-        <div className="bg-slate-50 dark:bg-slate-700/50 p-8 rounded-[2.5rem] border-2 border-slate-100 dark:border-slate-700 flex flex-col items-center text-center transition-all hover:shadow-lg">
-          <div className="text-jec-yellow text-4xl mb-4"><i className="fa-solid fa-ticket"></i></div>
-          <h4 className="text-xl font-black text-slate-800 dark:text-white mb-2">5枚セット</h4>
-          <p className="text-3xl font-black text-indigo-600 dark:text-indigo-400 mb-6">¥500</p>
-          <ul className="text-sm text-slate-500 dark:text-slate-400 mb-8 space-y-2 font-bold text-left">
-            <li><i className="fa-solid fa-check text-jec-green mr-2"></i> 模擬試験 5回分</li>
-            <li><i className="fa-solid fa-check text-jec-green mr-2"></i> 有効期限なし</li>
-            <li><i className="fa-solid fa-check text-jec-green mr-2"></i> 翌月のお月謝と合算請求</li>
-          </ul>
-          <button 
-            disabled={isLoading}
-            onClick={() => onPurchase('one-time')}
-            className="w-full py-4 bg-white dark:bg-slate-800 border-2 border-indigo-600 dark:border-indigo-400 text-indigo-600 dark:text-indigo-400 font-black rounded-2xl hover:bg-indigo-600 hover:text-white transition-all disabled:opacity-50"
-          >
-            {isLoading ? <i className="fa-solid fa-circle-notch animate-spin"></i> : '今すぐ購入する'}
-          </button>
-        </div>
-
-        <div className="bg-indigo-600 dark:bg-indigo-900 p-8 rounded-[2.5rem] border-2 border-indigo-500 flex flex-col items-center text-center shadow-xl relative overflow-hidden group">
-          <div className="absolute top-4 right-4 bg-jec-yellow text-slate-900 text-[10px] font-black uppercase px-3 py-1 rounded-full animate-bounce">お得なプラン</div>
-          <div className="text-white text-4xl mb-4 group-hover:scale-110 transition-transform"><i className="fa-solid fa-crown"></i></div>
-          <h4 className="text-xl font-black text-white mb-2">「I Can!」定額コース</h4>
-          <p className="text-3xl font-black text-jec-yellow mb-6">¥1,000<span className="text-xs text-white opacity-80">/月</span></p>
-          <ul className="text-sm text-indigo-100 dark:text-indigo-200 mb-8 space-y-2 font-bold text-left">
-            <li><i className="fa-solid fa-plus text-jec-green mr-2"></i> 毎月 15枚分を付与</li>
-            <li><i className="fa-solid fa-shield text-jec-yellow mr-2"></i> 最大45枚まで貯められる</li>
-            <li><i className="fa-solid fa-receipt text-white opacity-70 mr-2"></i> 毎月20日に請求</li>
-          </ul>
-          <button 
-            disabled={isLoading}
-            onClick={() => onPurchase('subscription')}
-            className="w-full py-4 bg-jec-yellow text-slate-900 font-black rounded-2xl shadow-lg hover:bg-white transition-all transform hover:scale-105 disabled:opacity-50"
-          >
-            {isLoading ? <i className="fa-solid fa-circle-notch animate-spin"></i> : '定額コースを申し込む'}
-          </button>
-        </div>
-      </div>
-
-      <div className="bg-amber-50 dark:bg-amber-900/20 p-5 rounded-2xl border border-amber-100 dark:border-amber-800 text-center mb-6">
-        <p className="text-[11px] font-bold text-amber-700 dark:text-amber-400 leading-relaxed">
-          <i className="fa-solid fa-circle-info mr-2"></i>
-          購入・継続の確認メールは、登録された保護者用メールアドレスに送信されます。<br/>
-          毎月の請求書は20日に発行されます。解約については設定画面よりお手続きください。
-        </p>
-      </div>
-
-      <button onClick={onClose} className="w-full py-2 text-slate-400 hover:text-slate-600 dark:text-slate-500 dark:hover:text-slate-300 font-bold transition-colors">キャンセル</button>
-    </div>
-  </div>
-);
+interface PendingPurchase {
+  type: 'subscription' | 'credits' | 'cancel_subscription';
+  amount?: number;
+  message: string;
+}
 
 const App: React.FC = () => {
   const [user, setUser] = useState<User | null>(null);
   const [view, setView] = useState<AppState>('auth');
   const [currentExam, setCurrentExam] = useState<Question[]>([]);
   const [lastResult, setLastResult] = useState<ExamResult | null>(null);
-  const [isLoading, setIsLoading] = useState(false);
-  const [isProcessingFinancial, setIsProcessingFinancial] = useState(false);
-  const [showPurchaseModal, setShowPurchaseModal] = useState(false);
   const [selectedGrade, setSelectedGrade] = useState<EikenGrade | null>(null);
   const [darkMode, setDarkMode] = useState(() => localStorage.getItem('eiken_dark_mode') === 'true');
+  const [genProgress, setGenProgress] = useState({ section: '', count: 0 });
+  const [pendingPurchase, setPendingPurchase] = useState<PendingPurchase | null>(null);
+  const [isCurrentSessionMock, setIsCurrentSessionMock] = useState(false);
+  const [currentTheme, setCurrentTheme] = useState<string | undefined>(undefined);
   
-  const [passwordModalStep, setPasswordModalStep] = useState<'none' | 'confirm' | 'form'>('none');
-  const [passwordForm, setPasswordForm] = useState({ current: '', new: '', confirm: '' });
-  const [passwordError, setPasswordError] = useState('');
-  const [isUpdatingPassword, setIsUpdatingPassword] = useState(false);
-  
+  const [shuffledHints, setShuffledHints] = useState<string[]>([]);
+  const [currentHintIdx, setCurrentHintIdx] = useState(0);
+
+  const [verifyEmail, setVerifyEmail] = useState('');
+  const [verifyPassword, setVerifyPassword] = useState('');
+  const [isVerifying, setIsVerifying] = useState(false);
+  const [verifyError, setVerifyError] = useState('');
+
   useEffect(() => {
     if (darkMode) document.documentElement.classList.add('dark');
     else document.documentElement.classList.remove('dark');
@@ -129,328 +76,500 @@ const App: React.FC = () => {
   useEffect(() => {
     const savedUser = localStorage.getItem('eiken_user');
     if (savedUser) {
-      const u = JSON.parse(savedUser);
-      setUser(u);
+      setUser(JSON.parse(savedUser));
       setView('grade_selection');
     }
   }, []);
 
-  const ensureApiKey = async () => {
-    // @ts-ignore
-    if (window.aistudio && !(await window.aistudio.hasSelectedApiKey())) {
-      // @ts-ignore
-      await window.aistudio.openSelectKey();
-      return true;
+  useEffect(() => {
+    if (view === 'generating') {
+      const shuffled = [...HINTS].sort(() => Math.random() - 0.5);
+      setShuffledHints(shuffled);
+      setCurrentHintIdx(0);
+      const interval = setInterval(() => {
+        setCurrentHintIdx(prev => (prev + 1) % shuffled.length);
+      }, 20000);
+      return () => clearInterval(interval);
     }
-    return false;
+  }, [view]);
+
+  const syncUserToGas = async (updatedUser: User, action: string, extraData: any = {}) => {
+    if (!GOOGLE_SHEET_GAS_URL) return;
+    const isDebug = updatedUser.id.startsWith('debug');
+    if (isDebug && (action === 'subscribe' || action === 'unsubscribe' || action === 'purchase_credits')) return; 
+    try {
+      await fetch(GOOGLE_SHEET_GAS_URL, {
+        method: 'POST',
+        body: JSON.stringify({ 
+          action, 
+          userId: updatedUser.id, 
+          email: updatedUser.parentEmail,
+          studentName: updatedUser.name,
+          stats: updatedUser.stats,
+          badges: updatedUser.badges,
+          credits: updatedUser.credits,
+          ...extraData 
+        })
+      });
+    } catch (e) {
+      console.error("GAS Sync failed", e);
+    }
   };
 
-  const syncToSheet = async (userId: string, updates: any) => {
-    if (!GOOGLE_SHEET_GAS_URL || userId.startsWith('school_')) return;
+  const handleVerificationAndPurchase = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!user || !pendingPurchase || !GOOGLE_SHEET_GAS_URL) return;
+    setVerifyError('');
+    setIsVerifying(true);
     try {
+      const passwordHash = await hashPassword(verifyPassword);
       const response = await fetch(GOOGLE_SHEET_GAS_URL, {
         method: 'POST',
-        body: JSON.stringify({ action: 'sync', userId, updates })
+        body: JSON.stringify({ action: 'login', email: verifyEmail, passwordHash })
       });
       const result = await response.json();
-      if (result.success) {
-        setUser(result.user);
-        localStorage.setItem('eiken_user', JSON.stringify(result.user));
+      if (!result.success) {
+        setVerifyError("Verification failed. / 認証に失敗しました。");
+        setIsVerifying(false);
+        return;
       }
-    } catch (err) { console.warn("Sync failed", err); }
-  };
-
-  const handleFinancialAction = async (action: 'purchase' | 'subscribe' | 'unsubscribe') => {
-    if (!user) return;
-    if (!GOOGLE_SHEET_GAS_URL) {
-      alert("Error: Backend URL not found.");
-      return;
+      const isDebug = user.id.startsWith('debug');
+      let updated: User;
+      if (pendingPurchase.type === 'subscription') {
+        const newTotal = isDebug ? user.credits + 15 : Math.min(45, user.credits + 15);
+        updated = { ...user, hasSubscription: true, credits: newTotal };
+        await syncUserToGas(updated, 'subscribe', { initial_bonus: 15, cost_monthly: 1000, notificationType: 'subscription_start' });
+      } else if (pendingPurchase.type === 'credits') {
+        const amount = pendingPurchase.amount || 0;
+        const newTotal = isDebug ? user.credits + amount : Math.min(45, user.credits + amount);
+        updated = { ...user, credits: newTotal };
+        await syncUserToGas(updated, 'purchase_credits', { amount, cost: 500, notificationType: 'purchase' });
+      } else {
+        updated = { ...user, hasSubscription: false };
+        await syncUserToGas(updated, 'unsubscribe', { notificationType: 'subscription_cancel' });
+      }
+      setUser(updated);
+      localStorage.setItem('eiken_user', JSON.stringify(updated));
+      setPendingPurchase(null);
+      setVerifyEmail('');
+      setVerifyPassword('');
+      setView('dashboard');
+    } catch (err) {
+      setVerifyError("Network Error. / ネットワークエラー。");
+    } finally {
+      setIsVerifying(false);
     }
-    setIsProcessingFinancial(true);
-    try {
-      const response = await fetch(GOOGLE_SHEET_GAS_URL, {
-        method: 'POST',
-        body: JSON.stringify({ action, userId: user.id })
-      });
-      const result = await response.json();
-      if (result.success) {
-        setUser(result.user);
-        localStorage.setItem('eiken_user', JSON.stringify(result.user));
-        alert('お手続きが完了しました。登録メールをご確認ください。');
-        setShowPurchaseModal(false);
-        if (action === 'unsubscribe') setPasswordModalStep('none');
-      } else { alert(result.error || 'リクエストの処理に失敗しました。'); }
-    } catch (err) { alert('ネットワークエラーが発生しました。'); }
-    finally { setIsProcessingFinancial(false); }
   };
 
-  const handleLogin = (u: User) => {
-    setUser(u);
-    localStorage.setItem('eiken_user', JSON.stringify(u));
-    setView('grade_selection');
+  const handleAddCredits = (amount: number) => {
+    setPendingPurchase({
+      type: 'credits',
+      amount,
+      message: `【購入最終確認】\n\nチケット5枚パック（500円）を購入します。即座に5枚のチケットが付与されます。代金は次回の月謝請求書にて合算して請求させていただきます。内容に同意し、パスワードを入力して購入を確定してください。`
+    });
   };
 
-  const startFullExam = async () => {
+  const handleSubscribe = () => {
+    setPendingPurchase({
+      type: 'subscription',
+      message: `【登録最終確認】\n\nサブスクリプション（月額1,000円）を開始します。即座に15枚のチケットが付与されます。以降、毎月1日に15枚が自動補充されます。代金は毎月の月謝請求書にて合算して請求させていただきます。内容に同意し、パスワードを入力して登録を確定してください。`
+    });
+  };
+
+  const handleCancelSubscription = () => {
+    setPendingPurchase({
+      type: 'cancel_subscription',
+      message: `【解約最終確認】\n\nサブスクリプションを解除します。お手続きを完了するには、保護者の方のパスワード認証が必要です。`
+    });
+  };
+
+  const startExamFlow = async (isTarget: boolean, section?: TargetSection, theme?: string) => {
     if (!selectedGrade || !user) return;
-    
-    await ensureApiKey();
-
-    const isSchool = user.id.startsWith('school_') || !user.isHomeUser;
-    if (!isSchool && !user.hasSubscription && user.credits < 1) {
+    const cost = isTarget ? 0.2 : 1.0;
+    if (!user.id.startsWith('debug') && !user.id.startsWith('school') && !user.hasSubscription && user.credits < cost) {
       alert("チケットが不足しています。");
-      setShowPurchaseModal(true);
       return;
     }
-    setIsLoading(true); setView('review_loading');
+
+    setIsCurrentSessionMock(!isTarget);
+    setCurrentTheme(theme);
+
+    const today = new Date().toISOString().split('T')[0];
+    let userStats = { ...user.stats };
+    
+    if (userStats.lastExamDate !== today) {
+      userStats.examsTakenToday = 0;
+      userStats.targetExamsTakenToday = 0;
+      userStats.lastExamDate = today;
+    }
+
+    if (!isTarget) {
+      if (userStats.examsTakenToday >= 10) {
+        alert("本日の模擬試験の制限回数（10回）に達しました。明日また挑戦してください！");
+        return;
+      }
+      userStats.examsTakenToday += 1;
+    } else {
+      if (userStats.targetExamsTakenToday >= 10) {
+        alert("本日のスキル練習の制限回数（10回）に達しました。明日また挑戦してください！");
+        return;
+      }
+      userStats.targetExamsTakenToday += 1;
+    }
+
+    const updatedUser = { ...user, stats: userStats };
+    setUser(updatedUser);
+    localStorage.setItem('eiken_user', JSON.stringify(updatedUser));
+    
+    syncUserToGas(updatedUser, 'updateStats');
+
+    setView('generating');
+    setCurrentExam([]);
+    const generated: Question[] = [];
     try {
-      const questions = await generateFullExam(selectedGrade);
-      setCurrentExam(questions);
-      if (!isSchool && !user.hasSubscription) {
-        const newCredits = Math.max(0, Math.round((user.credits - 1) * 10) / 10);
-        const updatedUser = { ...user, credits: newCredits };
-        setUser(updatedUser);
-        localStorage.setItem('eiken_user', JSON.stringify(updatedUser));
-        await syncToSheet(user.id, { credits: newCredits });
+      const sections: TargetSection[] = isTarget && section ? [section] : (selectedGrade === 'GRADE_5' ? ['PART_1', 'PART_2', 'PART_3'] : ['PART_1', 'PART_2', 'PART_3', 'PART_4']);
+      for (const s of sections) {
+        setGenProgress({ section: s, count: generated.length });
+        const streamer = streamQuestions(selectedGrade, s, theme);
+        for await (const q of streamer) {
+          generated.push(q);
+          setCurrentExam([...generated]);
+        }
+      }
+      if (!user.id.startsWith('debug') && !user.id.startsWith('school') && !user.hasSubscription) {
+        const finalUser = { ...updatedUser, credits: Math.max(0, Math.round((updatedUser.credits - cost) * 10) / 10) };
+        setUser(finalUser);
+        localStorage.setItem('eiken_user', JSON.stringify(finalUser));
+        syncUserToGas(finalUser, 'updateStats');
       }
       setView('exam');
-    } catch (err: any) { 
-      console.error("EXAM_GEN_FAILED", err);
-      if (err.message?.includes('Requested entity was not found') || err.message?.includes('400')) {
-        // @ts-ignore
-        if (window.aistudio) await window.aistudio.openSelectKey();
-      }
-      alert(`問題の作成に失敗しました:\n${err.message || 'Unknown Error'}`); 
-      setView('dashboard'); 
+    } catch (err) {
+      setView('dashboard');
     }
-    finally { setIsLoading(false); }
   };
 
-  const startTargetPracticeAction = async (section: TargetSection) => {
-    if (!selectedGrade || !user) return;
-    
-    await ensureApiKey();
-
-    const isSchool = user.id.startsWith('school_') || !user.isHomeUser;
-    if (!isSchool && !user.hasSubscription && user.credits < 0.2) {
-      alert("チケットが不足しています。");
-      setShowPurchaseModal(true);
-      return;
-    }
-    setIsLoading(true); setView('review_loading');
-    try {
-      const questions = await generateTargetPractice(selectedGrade, section);
-      if (!isSchool && !user.hasSubscription) {
-        const newCredits = Math.max(0, Math.round((user.credits - 0.2) * 10) / 10);
-        const updatedUser = { ...user, credits: newCredits };
-        setUser(updatedUser);
-        localStorage.setItem('eiken_user', JSON.stringify(updatedUser));
-        await syncToSheet(user.id, { credits: newCredits });
-      }
-      const customQuestions = questions.map(q => ({ ...q, isTarget: true, targetSection: section }));
-      setCurrentExam(customQuestions);
-      setView('exam');
-    } catch (err: any) { 
-      console.error("PRACTICE_GEN_FAILED", err);
-      alert(`練習問題の作成に失敗しました:\n${err.message || 'Unknown Error'}`); 
-      setView('dashboard'); 
-    }
-    finally { setIsLoading(false); }
-  };
-
-  const finishExam = async (answers: number[], remainingTime: number) => {
+  const handleRemake = async (idx: number) => {
     if (!user || !selectedGrade) return;
+    const today = new Date().toISOString().split('T')[0];
+    let stats = { ...user.stats };
+    if (stats.lastRemakeDate !== today) {
+      stats.remakeCountToday = 0;
+      stats.lastRemakeDate = today;
+    }
+    if (!user.id.startsWith('debug') && stats.remakeCountToday >= 5) {
+      alert("本日のリメイク制限（5回）に達しました。");
+      return;
+    }
+    try {
+      const nq = await remakeQuestion(selectedGrade, currentExam[idx]);
+      const newExam = [...currentExam];
+      newExam[idx] = nq;
+      setCurrentExam(newExam);
+      stats.remakeCountToday += 1;
+      const updatedUser = { ...user, stats };
+      setUser(updatedUser);
+      localStorage.setItem('eiken_user', JSON.stringify(updatedUser));
+      syncUserToGas(updatedUser, 'updateStats');
+    } catch (err) {
+      alert("問題の再生成に失敗しました。");
+    }
+  };
 
-    const total = currentExam.length;
-    let score = 0;
-    currentExam.forEach((q, idx) => {
-      if (answers[idx] === q.correctAnswer) score++;
+  const handleRetakeSame = () => {
+    if (lastResult) {
+      startExamFlow(!!lastResult.isTargetPractice, lastResult.targetSection, currentTheme);
+    }
+  };
+
+  const finishExam = (answers: number[], timeLeft: number) => {
+    if (!user || !selectedGrade) return;
+    const score = currentExam.reduce((acc, q, i) => acc + (answers[i] === q.correctAnswer ? 1 : 0), 0);
+    const totalTime = selectedGrade === 'GRADE_5' ? 25 * 60 : 35 * 60;
+    const durationSeconds = totalTime - timeLeft;
+    const isTarget = !isCurrentSessionMock;
+    const targetSection = isTarget ? currentExam[0].category as TargetSection : undefined;
+
+    let updatedStats = { ...user.stats };
+    const today = new Date().toISOString().split('T')[0];
+    const lastDate = new Date(updatedStats.lastStudyTimestamp).toISOString().split('T')[0];
+    
+    if (lastDate !== today) {
+      const yesterday = new Date();
+      yesterday.setDate(yesterday.getDate() - 1);
+      const yesterdayStr = yesterday.toISOString().split('T')[0];
+      if (lastDate === yesterdayStr) updatedStats.streakCount += 1;
+      else updatedStats.streakCount = 1;
+      updatedStats.lastStudyTimestamp = Date.now();
+    }
+    
+    if (isTarget && targetSection) {
+      updatedStats.targetCompletions[targetSection] = (updatedStats.targetCompletions[targetSection] || 0) + 1;
+    }
+
+    const newBadges: Badge[] = [...user.badges];
+    const newlyEarnedBadges: Badge[] = [];
+    const now = Date.now();
+
+    const addBadge = (id: string, name: string, desc: string, jp: string, icon: string, color: string, canLevelUp: boolean = true) => {
+      const existingIdx = newBadges.findIndex(b => b.id === id);
+      if (existingIdx !== -1) {
+        if (!canLevelUp) return; // Do not increment count for one-time badges
+        newBadges[existingIdx] = { ...newBadges[existingIdx], count: newBadges[existingIdx].count + 1, earnedAt: now };
+        newlyEarnedBadges.push(newBadges[existingIdx]);
+      } else {
+        const b = { id, name, description: desc, jpDescription: jp, icon, color, earnedAt: now, count: 1 };
+        newBadges.push(b);
+        newlyEarnedBadges.push(b);
+      }
+    };
+
+    const isPassed = (score / currentExam.length) >= 0.6;
+
+    // Track Thematic Progress
+    if (isTarget && targetSection && currentTheme && isPassed) {
+      if (!updatedStats.thematicProgress) updatedStats.thematicProgress = {};
+      if (!updatedStats.thematicProgress[currentTheme]) updatedStats.thematicProgress[currentTheme] = {};
+      updatedStats.thematicProgress[currentTheme][targetSection] = true;
+      
+      const requiredSections = selectedGrade === 'GRADE_5' ? ['PART_1', 'PART_2', 'PART_3'] : ['PART_1', 'PART_2', 'PART_3', 'PART_4'];
+      const allDone = requiredSections.every(s => updatedStats.thematicProgress![currentTheme][s]);
+      
+      if (allDone) {
+        const themeLabel = currentTheme.split(' ')[0];
+        addBadge(`theme_${currentTheme}`, `${themeLabel} Master`, `Complete all sections for "${currentTheme}" theme.`, `${currentTheme}テーマの全セクションを制覇しました！`, 'fa-medal', 'bg-gradient-to-r from-indigo-500 to-purple-600 text-white');
+      }
+    }
+
+    // First Step (No Level Up)
+    addBadge('first_step', 'First Step', 'Complete your first session.', '初めてのトレーニングを完了しました。', 'fa-shoe-prints', 'bg-blue-500 text-white', false);
+
+    // DAILY LIMITS & STREAKS
+    const historyToday = [...user.history, { timestamp: now, isTargetPractice: isTarget, isPassed, targetSection }].filter(h => 
+      new Date(h.timestamp).toISOString().split('T')[0] === today
+    );
+
+    // Daily Sweep
+    const requiredSections = selectedGrade === 'GRADE_5' ? ['PART_1', 'PART_2', 'PART_3'] : ['PART_1', 'PART_2', 'PART_3', 'PART_4'];
+    const partsPassedToday = new Set(historyToday.filter(h => h.isTargetPractice && h.isPassed).map(h => h.targetSection));
+    if (requiredSections.every(s => partsPassedToday.has(s as TargetSection))) {
+      addBadge('daily_sweep', 'Daily Sweep', 'Pass all skill sections in one day.', '1日で全スキルの練習に合格しました！', 'fa-broom', 'bg-emerald-600 text-white');
+    }
+
+    // Skill Milestones (5 and 10 sessions per section in one day)
+    requiredSections.forEach(s => {
+      const sectionCount = historyToday.filter(h => h.isTargetPractice && h.targetSection === s).length;
+      const partName = s.replace('PART_', 'Part ');
+      const jpName = s === 'PART_1' ? '語彙・文法' : s === 'PART_2' ? '対話文' : s === 'PART_3' ? '並び替え' : '読解';
+      
+      if (sectionCount >= 5) {
+        addBadge(`skill_5_${s}`, `${partName} Enthusiast`, `Complete 5 ${partName} sessions in one day.`, `1日で${jpName}練習を5回達成しました。`, 'fa-bolt', 'bg-indigo-400 text-white');
+      }
+      if (sectionCount >= 10) {
+        addBadge(`skill_10_${s}`, `${partName} Legend`, `Complete 10 ${partName} sessions in one day.`, `1日で${jpName}練習を10回達成！伝説級です。`, 'fa-fire-flame-simple', 'bg-rose-500 text-white');
+      }
     });
 
-    const isPassed = (score / total) >= 0.6;
-    const durationSeconds = (35 * 60) - remainingTime;
-    const isTargetPractice = currentExam.length > 0 && (currentExam[0] as any).isTarget;
-    const targetSection = isTargetPractice ? (currentExam[0] as any).targetSection : undefined;
+    if (isCurrentSessionMock) {
+      if (score === currentExam.length) {
+        addBadge('perfect_100', 'Mock Perfect', 'Get 100% on a full mock exam.', '模擬試験で100点を獲得しました！完璧です。', 'fa-crown', 'bg-yellow-500 text-white');
+      }
+      if (selectedGrade === 'GRADE_4' && durationSeconds < 900) {
+        addBadge('speed_demon', 'Speed Demon', 'Finish G4 mock exam in under 15 min.', '4級模擬試験を15分未満で解きました。', 'fa-gauge-high', 'bg-red-500 text-white');
+      }
+      if (selectedGrade === 'GRADE_5' && durationSeconds < 600) {
+        addBadge('speed_demon', 'Speed Demon', 'Finish G5 mock exam in under 10 min.', '5級模擬試験を10分未満で解きました。', 'fa-gauge-high', 'bg-red-500 text-white');
+      }
+      const mocksToday = updatedStats.examsTakenToday;
+      if (mocksToday === 2) addBadge('daily_mock_2', 'Double Down', 'Complete 2 full exams in 1 day.', '1日2回の模擬試験を達成しました。', 'fa-dice-two', 'bg-indigo-500 text-white');
+      if (mocksToday === 5) addBadge('daily_mock_5', 'Power of Five', 'Complete 5 full exams in 1 day.', '1日5回の模擬試験を達成！', 'fa-5', 'bg-emerald-500 text-white');
+      if (mocksToday === 10) addBadge('daily_mock_10', 'Mock Marathon', 'Complete 10 full exams in 1 day.', '1日10回！伝説の記録です！', 'fa-trophy', 'bg-rose-600 text-white');
+    }
+
+    if (!isCurrentSessionMock && targetSection) {
+      if (isPassed && durationSeconds < 300) {
+        addBadge('skill_speedster', 'Quick Learner', 'Pass skill training in under 5 mins.', '5分以内にスキル練習に合格しました！', 'fa-bolt-lightning', 'bg-amber-400 text-slate-900');
+      }
+      if (score === currentExam.length) {
+        if (targetSection === 'PART_1') addBadge('perfect_part_1', 'Vocab Master', 'Get 100% on Part 1 training.', '語彙・文法練習で満点を獲得しました！', 'fa-spell-check', 'bg-emerald-500 text-white');
+        else if (targetSection === 'PART_2') addBadge('perfect_part_2', 'Dialogue Master', 'Get 100% on Part 2 training.', '対話文練習で満点を獲得しました！', 'fa-comments', 'bg-blue-500 text-white');
+        else if (targetSection === 'PART_3') addBadge('perfect_part_3', 'Order Master', 'Get 100% on Part 3 training.', '並び替え練習で満点を獲得しました！', 'fa-puzzle-piece', 'bg-violet-500 text-white');
+        else if (targetSection === 'PART_4' && selectedGrade === 'GRADE_4') addBadge('perfect_part_4', 'Reading Master', 'Get 100% on Part 4 training.', '読解練習で満点を獲得しました！', 'fa-book-open', 'bg-amber-600 text-white');
+      }
+    }
+
+    const sc = updatedStats.streakCount;
+    if (sc >= 3) addBadge('streak_3', '3-Day Streak', 'Study for 3 days in a row.', '3日連続学習！', 'fa-fire', 'bg-orange-400 text-white');
+    if (sc >= 5) addBadge('streak_5', 'High Five Streak', 'Study for 5 days in a row.', '5日連続学習達成！', 'fa-hand', 'bg-orange-500 text-white');
+    if (sc >= 10) addBadge('streak_10', 'Double Digits', 'Study for 10 days in a row.', '10日連続学習達成！', 'fa-fire-flame-curved', 'bg-rose-500 text-white');
+    if (sc >= 15) addBadge('streak_15', 'Fortnight Fighter', 'Study for 15 days in a row.', '15日連続学習達成！半月突破です！', 'fa-calendar-check', 'bg-violet-500 text-white');
+    if (sc >= 30) addBadge('streak_30', 'Monthly Warrior', 'Study for 30 days in a row.', '30日連続学習達成！一ヶ月皆勤です。', 'fa-trophy', 'bg-violet-600 text-white');
 
     const result: ExamResult = {
       score,
-      total,
+      total: currentExam.length,
       isPassed,
       timestamp: Date.now(),
       durationSeconds,
       missedQuestions: currentExam
         .map((q, i) => ({ question: q, userAnswer: answers[i] }))
         .filter(entry => entry.userAnswer !== entry.question.correctAnswer),
-      isTargetPractice,
+      isTargetPractice: !isCurrentSessionMock,
       targetSection,
-      grade: selectedGrade
+      grade: selectedGrade,
+      newBadges: newlyEarnedBadges
     };
 
-    const now = Date.now();
-    const lastStudy = user.stats.lastStudyTimestamp;
-    const isConsecutive = lastStudy > 0 && (now - lastStudy) < 86400000 * 2; 
-    
-    const newStats: UserStats = {
-      ...user.stats,
-      totalQuestionsAnswered: user.stats.totalQuestionsAnswered + total,
-      streakCount: isConsecutive ? user.stats.streakCount + 1 : 1,
-      lastStudyTimestamp: now,
-    };
-
-    if (isTargetPractice && targetSection) {
-      newStats.targetCompletions[targetSection as TargetSection] = (newStats.targetCompletions[targetSection as TargetSection] || 0) + 1;
-    }
-
-    const updatedUser: User = { ...user, history: [...user.history, result], stats: newStats };
+    const updatedUser = { ...user, history: [...user.history, result], badges: newBadges, stats: updatedStats };
     setUser(updatedUser);
     localStorage.setItem('eiken_user', JSON.stringify(updatedUser));
+    syncUserToGas(updatedUser, 'updateStats');
     setLastResult(result);
     setView('results');
-    await syncToSheet(user.id, { history: updatedUser.history, stats: updatedUser.stats });
   };
 
-  const handlePasswordUpdate = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!user) return;
-    if (passwordForm.new !== passwordForm.confirm) { setPasswordError('パスワードが一致しません。'); return; }
-    setIsUpdatingPassword(true);
-    try {
-      const currentHash = await hashPassword(passwordForm.current);
-      if (user.hashedPassword && currentHash !== user.hashedPassword) { setPasswordError('現在のパスワードが正しくありません。'); return; }
-      const newHash = await hashPassword(passwordForm.new);
-      if (GOOGLE_SHEET_GAS_URL) { await fetch(GOOGLE_SHEET_GAS_URL, { method: 'POST', body: JSON.stringify({ action: 'updatePassword', userId: user.id, newHash: newHash }) }); }
-      const updatedUser = { ...user, hashedPassword: newHash };
-      setUser(updatedUser);
-      localStorage.setItem('eiken_user', JSON.stringify(updatedUser));
-      setPasswordModalStep('none');
-      setPasswordForm({ current: '', new: '', confirm: '' });
-      alert('更新しました。');
-    } catch (err) { setPasswordError('更新に失敗しました。'); }
-    finally { setIsUpdatingPassword(false); }
+  const calculateGenerationProgress = () => {
+    if (!selectedGrade) return 0;
+    const sections: TargetSection[] = isCurrentSessionMock 
+      ? (selectedGrade === 'GRADE_5' ? ['PART_1', 'PART_2', 'PART_3'] : ['PART_1', 'PART_2', 'PART_3', 'PART_4'])
+      : [genProgress.section as TargetSection];
+    
+    if (!isCurrentSessionMock) return 50; // Simple 50% for targeted since it's only 1 section
+
+    const total = sections.length;
+    const currentIdx = sections.indexOf(genProgress.section as TargetSection);
+    if (currentIdx === -1) return 0;
+    return Math.round((currentIdx / total) * 100);
   };
 
   return (
-    <div className="min-h-screen bg-slate-50 dark:bg-[#0f172a] transition-colors duration-300 font-['Lexend']">
-      <header className="bg-indigo-600 dark:bg-[#1a2233] text-white p-4 shadow-xl sticky top-0 z-50 border-b border-indigo-400/20">
-        <div className="max-w-6xl mx-auto flex justify-between items-center">
-          <div className="flex items-center cursor-pointer" onClick={() => user && setView('grade_selection')}>
-            <JecLogo />
-            <div className="flex flex-col">
-               <h1 className="text-sm font-black tracking-tight text-white leading-none">JEC英語教室</h1>
-               <h2 className="text-[10px] font-bold text-indigo-200 uppercase tracking-widest leading-none mt-0.5">I Can! Eiken Academy</h2>
-            </div>
-          </div>
-          <div className="flex items-center space-x-2 md:space-x-4">
-            <button onClick={() => setDarkMode(!darkMode)} className="p-2 rounded-xl hover:bg-white/10 transition-all text-white text-lg"><i className={`fa-solid ${darkMode ? 'fa-sun text-jec-yellow' : 'fa-moon'}`}></i></button>
-            {user && (
-              <>
-                <button 
-                  onClick={() => setShowPurchaseModal(true)}
-                  className="bg-white/10 hover:bg-white/20 px-3 py-1.5 rounded-2xl flex items-center space-x-2 border border-white/20 transition-all shadow-inner group cursor-pointer"
-                >
-                  <i className="fa-solid fa-ticket text-jec-yellow text-sm group-hover:scale-110 transition-transform"></i>
-                  <span className="text-sm font-black text-white">
-                    {(!user.isHomeUser || user.id.startsWith('school_') || user.hasSubscription) ? '∞' : user.credits.toFixed(1)}
-                  </span>
-                </button>
-                <div className="hidden md:flex flex-col items-end">
-                  <span className="font-bold text-white text-xs">Hi, {user.name}</span>
-                  {selectedGrade && <span className={`text-[9px] px-2 py-0.5 rounded-full uppercase font-black mt-0.5 ${selectedGrade === 'GRADE_5' ? 'bg-jec-green text-slate-800' : 'bg-jec-yellow text-slate-800'}`}>{selectedGrade.replace('_', ' ')}</span>}
-                </div>
-                {user.isHomeUser && <button onClick={() => setPasswordModalStep('confirm')} className="text-indigo-200 hover:text-white text-[10px] font-black uppercase flex items-center transition-colors px-2 py-1.5 hover:bg-white/5 rounded-lg"><i className="fa-solid fa-gear mr-1.5"></i> <span className="hidden sm:inline">Settings</span></button>}
-                <button onClick={() => { setUser(null); localStorage.removeItem('eiken_user'); setView('auth'); }} className="bg-indigo-700 hover:bg-rose-600 px-4 py-2 rounded-xl text-[10px] transition-all text-white font-black uppercase shadow-lg border border-indigo-500/50">Logout</button>
-              </>
-            )}
-          </div>
-        </div>
-      </header>
+    <div className="min-h-screen bg-slate-50 dark:bg-[#0f172a] text-slate-900 dark:text-white transition-colors relative">
+      <style>{`
+        @keyframes hintTimer {
+          from { width: 0%; }
+          to { width: 100%; }
+        }
+        @keyframes pulseBrain {
+          0%, 100% { transform: scale(1); filter: drop-shadow(0 0 0px rgba(79, 70, 229, 0)); }
+          50% { transform: scale(1.15); filter: drop-shadow(0 0 15px rgba(79, 70, 229, 0.4)); }
+        }
+      `}</style>
 
-      {showPurchaseModal && <PurchaseModal onClose={() => setShowPurchaseModal(false)} onPurchase={type => handleFinancialAction(type === 'one-time' ? 'purchase' : 'subscribe')} isLoading={isProcessingFinancial} />}
-
-      {passwordModalStep !== 'none' && (
-        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-md z-[100] flex items-center justify-center p-4 animate-fadeIn">
-          <div className="bg-white dark:bg-slate-800 rounded-[2.5rem] p-8 max-w-md w-full shadow-2xl animate-popIn border border-slate-100 dark:border-slate-700">
-            {passwordModalStep === 'confirm' ? (
-              <div className="space-y-6 text-center">
-                <div className="w-16 h-16 bg-amber-50 dark:bg-amber-900/30 text-jec-yellow rounded-full flex items-center justify-center mx-auto text-2xl"><i className="fa-solid fa-user-gear"></i></div>
-                <h3 className="text-2xl font-black text-slate-800 dark:text-white">Account Settings</h3>
-                <div className="space-y-3">
-                  <button onClick={() => setPasswordModalStep('form')} className="w-full py-4 px-6 bg-slate-50 dark:bg-slate-700/50 hover:bg-indigo-50 dark:hover:bg-indigo-900/30 text-slate-700 dark:text-slate-200 font-bold rounded-2xl transition-all flex items-center justify-between group"><span><i className="fa-solid fa-key mr-3"></i> Change Password</span><i className="fa-solid fa-chevron-right"></i></button>
-                </div>
-                <button onClick={() => setPasswordModalStep('none')} className="w-full py-4 text-slate-400 font-bold">Close</button>
+      {pendingPurchase && (
+        <div className="fixed inset-0 z-[200] flex items-start justify-center animate-fadeIn">
+          <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm" onClick={() => setPendingPurchase(null)}></div>
+          <div className="relative w-full max-w-2xl bg-black/95 text-white p-8 md:p-12 shadow-2xl rounded-b-[3rem] animate-fadeIn border-b-4 border-indigo-500 overflow-y-auto max-h-[95vh]">
+            <div className="flex flex-col md:flex-row items-start md:space-x-6">
+              <div className="hidden md:flex w-16 h-16 bg-indigo-500/20 rounded-2xl items-center justify-center text-3xl text-indigo-400 shrink-0 mb-4 md:mb-0"><i className="fa-solid fa-lock"></i></div>
+              <div className="flex-1 w-full">
+                <h2 className="text-2xl font-black mb-4 tracking-tight flex items-center"><i className="fa-solid fa-shield-check mr-3 text-indigo-500"></i>Parental Verification</h2>
+                <div className="bg-white/5 p-6 rounded-2xl border border-white/10 mb-8"><p className="text-sm font-bold leading-relaxed whitespace-pre-wrap text-slate-200">{pendingPurchase.message}</p></div>
+                <form onSubmit={handleVerificationAndPurchase} className="space-y-4">
+                  {verifyError && <div className="p-4 bg-rose-500/20 text-rose-300 rounded-xl text-xs font-bold border border-rose-500/30 animate-shake">{verifyError}</div>}
+                  <div className="space-y-4">
+                    <div><label className="block text-[10px] font-black uppercase text-slate-400 mb-1 ml-1">Parent Email</label><input type="email" className="w-full px-6 py-4 bg-white/5 border-2 border-white/10 rounded-2xl outline-none focus:border-indigo-500 text-white" value={verifyEmail} onChange={e => setVerifyEmail(e.target.value)} required /></div>
+                    <div><label className="block text-[10px] font-black uppercase text-slate-400 mb-1 ml-1">Password</label><input type="password" className="w-full px-6 py-4 bg-white/5 border-2 border-white/10 rounded-2xl outline-none focus:border-indigo-500 text-white" value={verifyPassword} onChange={e => setVerifyPassword(e.target.value)} required /></div>
+                  </div>
+                  <div className="flex gap-4 pt-4">
+                    <button type="button" onClick={() => setPendingPurchase(null)} className="flex-1 py-4 bg-slate-800 text-white font-black rounded-2xl">CANCEL</button>
+                    <button type="submit" className="flex-1 py-4 bg-indigo-600 text-white font-black rounded-2xl" disabled={isVerifying}>{isVerifying ? <i className="fa-solid fa-spinner animate-spin"></i> : 'VERIFY & CONFIRM'}</button>
+                  </div>
+                </form>
               </div>
-            ) : (
-              <form onSubmit={handlePasswordUpdate} className="space-y-4">
-                <div className="text-center mb-6">
-                  <div className="w-16 h-16 bg-indigo-50 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400 rounded-full flex items-center justify-center mx-auto mb-4 text-2xl"><i className="fa-solid fa-lock"></i></div>
-                  <h3 className="text-2xl font-black text-slate-800 dark:text-white">New Password</h3>
-                </div>
-                {passwordError && <div className="p-3 bg-rose-50 text-rose-600 text-xs font-bold rounded-xl mb-4">{passwordError}</div>}
-                <div className="space-y-4">
-                  <input type="password" placeholder="現在のパスワード" className="w-full px-4 py-3 border rounded-xl" value={passwordForm.current} onChange={e => setPasswordForm({ ...passwordForm, current: e.target.value })} required />
-                  <input type="password" placeholder="新しいパスワード" className="w-full px-4 py-3 border rounded-xl" value={passwordForm.new} onChange={e => setPasswordForm({ ...passwordForm, new: e.target.value })} required />
-                  <input type="password" placeholder="パスワード（確認）" className="w-full px-4 py-3 border rounded-xl" value={passwordForm.confirm} onChange={e => setPasswordForm({ ...passwordForm, confirm: e.target.value })} required />
-                </div>
-                <div className="grid grid-cols-2 gap-3 pt-4">
-                  <button type="button" onClick={() => setPasswordModalStep('none')} className="py-4 bg-slate-100 font-bold rounded-2xl">Cancel</button>
-                  <button type="submit" disabled={isUpdatingPassword} className="py-4 bg-indigo-600 text-white font-bold rounded-2xl shadow-lg">{isUpdatingPassword ? 'Updating...' : 'Update'}</button>
-                </div>
-              </form>
-            )}
+            </div>
           </div>
         </div>
       )}
-
-      <main className="max-w-6xl mx-auto p-4 md:p-8">
-        {view === 'auth' && <Login onLogin={handleLogin} />}
-        {view === 'grade_selection' && (
-          <div className="animate-fadeIn py-10">
-            <div className="text-center mb-12">
-              <h2 className="text-3xl font-black text-slate-800 dark:text-white mb-2">Select Your Level / レベル選択</h2>
-              <p className="text-slate-500 font-medium italic">"I Can! Eiken Academy" Training Portal</p>
+      <header className="bg-indigo-600 dark:bg-[#1a2233] p-4 sticky top-0 z-50 shadow-lg flex justify-between items-center">
+        <div className="flex items-center cursor-pointer" onClick={() => user && setView('grade_selection')}>
+          <div className="flex items-baseline font-black text-2xl tracking-tighter mr-3 transition-transform hover:scale-105 active:scale-95"><span className="text-jec-green">J</span><span className="text-jec-yellow">E</span><span className="text-jec-orange">C</span></div>
+          <div><h1 className="text-sm font-black text-white leading-none">JEC英語教室</h1><h2 className="text-[10px] font-bold text-indigo-200 uppercase mt-1">I Can! Eiken Academy</h2></div>
+        </div>
+        <div className="flex items-center space-x-4">
+          <button onClick={() => setDarkMode(!darkMode)} className="text-xl text-white"><i className={`fa-solid ${darkMode ? 'fa-sun text-jec-yellow' : 'fa-moon'}`}></i></button>
+          {user && (
+            <div className="flex items-center space-x-4">
+              <button onClick={() => setView('shop')} className={`text-xs font-black px-4 py-1.5 rounded-full text-white shadow-lg border-2 flex items-center ${user.hasSubscription ? 'bg-gradient-to-r from-amber-400 via-yellow-300 to-amber-500 border-yellow-200 shadow-yellow-500/20 text-slate-900 ring-2 ring-yellow-400 animate-pulse' : 'bg-white/10 border-transparent'}`}>
+                <i className={`fa-solid fa-ticket mr-2 ${user.hasSubscription ? 'text-slate-900' : 'text-jec-yellow'}`}></i>{user.id.startsWith('school') ? '∞' : user.credits.toFixed(1)}
+              </button>
+              <button onClick={() => { setUser(null); localStorage.clear(); setView('auth'); }} className="text-[10px] font-black uppercase bg-rose-600 px-3 py-1.5 rounded-lg text-white">Logout</button>
             </div>
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
-              {EIKEN_GRADES.map((grade) => (
-                <button
-                  key={grade.id}
-                  disabled={!grade.active}
-                  onClick={() => { setSelectedGrade(grade.id); setView('dashboard'); }}
-                  className={`p-8 rounded-[2.5rem] border-2 transition-all group flex flex-col items-center text-center relative overflow-hidden ${
-                    grade.active ? `bg-white dark:bg-slate-800 border-indigo-50 dark:border-slate-700 hover:border-${grade.color} hover:shadow-2xl` : 'bg-slate-100 opacity-60 grayscale'
-                  }`}
-                >
-                  <div className={`w-20 h-20 rounded-3xl flex items-center justify-center mb-6 text-white ${grade.active ? `bg-${grade.color}` : 'bg-slate-300'}`}>
-                    <i className={`fa-solid ${grade.active ? 'fa-book-open-reader' : 'fa-lock'} text-3xl`}></i>
-                  </div>
-                  <h3 className="text-2xl font-black text-slate-800 dark:text-white">{grade.label}</h3>
-                  <p className="text-sm font-bold text-slate-500">{grade.jpLabel}</p>
+          )}
+        </div>
+      </header>
+      <main className="max-w-6xl mx-auto p-4 md:p-8">
+        {view === 'auth' && <Login onLogin={(u) => { setUser(u); localStorage.setItem('eiken_user', JSON.stringify(u)); setView('grade_selection'); }} />}
+        {view === 'grade_selection' && (
+          <div className="py-12 text-center animate-fadeIn">
+            <h2 className="text-4xl font-black mb-12">Select Your Grade</h2>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8 max-w-5xl mx-auto">
+              {['GRADE_5', 'GRADE_4', 'GRADE_3'].map((id, i) => (
+                <button key={id} disabled={id === 'GRADE_3'} onClick={() => { setSelectedGrade(id as EikenGrade); setView('dashboard'); }} className={`group bg-white dark:bg-slate-800 p-12 rounded-[4rem] border-4 transition-all ${id === 'GRADE_3' ? 'opacity-40 grayscale pointer-events-none' : 'border-slate-50 dark:border-slate-700/50 hover:border-indigo-500 hover:scale-105 shadow-xl'}`}>
+                  <div className={`w-24 h-24 mx-auto rounded-[2rem] flex items-center justify-center mb-8 text-white text-4xl shadow-2xl ${i === 0 ? 'bg-jec-green' : i === 1 ? 'bg-jec-yellow' : 'bg-jec-orange'}`}><i className={`fa-solid ${id === 'GRADE_3' ? 'fa-lock' : 'fa-book-open-reader'}`}></i></div>
+                  <h3 className="text-3xl font-black mb-1 uppercase tracking-tight">{id.replace('_', ' ')}</h3>
                 </button>
               ))}
             </div>
           </div>
         )}
-        {view === 'dashboard' && user && <Dashboard user={user} onStartExam={startFullExam} onStartTargetPractice={startTargetPracticeAction} />}
-        {view === 'exam' && <ExamView questions={currentExam} onFinish={finishExam} onRemakeQuestion={async (idx) => {
-          if (!selectedGrade) return;
-          try {
-             const newQ = await remakeQuestion(selectedGrade, currentExam[idx]);
-             const updated = [...currentExam]; updated[idx] = newQ; setCurrentExam(updated);
-          } catch (err: any) {
-             alert(`再作成に失敗しました:\n${err.message}`);
-          }
-        }} />}
-        {view === 'results' && lastResult && <ResultsView result={lastResult} onRetry={startFullExam} onDashboard={() => setView('grade_selection')} onStartReview={() => {}} />}
-        {view === 'review_loading' && (
-          <div className="flex flex-col items-center justify-center py-24 space-y-8 animate-fadeIn">
-            <div className="animate-spin rounded-full h-24 w-24 border-t-4 border-jec-yellow border-indigo-600"></div>
-            <div className="text-center">
-              <h2 className="text-2xl font-black text-slate-800 dark:text-white">Generating Content / 問題作成中</h2>
-              <p className="text-indigo-600 dark:text-indigo-400 font-bold max-w-xs mx-auto mt-2">Connecting to Gemini AI... This usually takes 15-30 seconds.</p>
+        {view === 'dashboard' && user && <Dashboard user={user} grade={selectedGrade} onStartExam={(theme) => startExamFlow(false, undefined, theme)} onStartTargetPractice={(s, theme) => startExamFlow(true, s, theme)} onBackToGrades={() => setView('grade_selection')} onOpenShop={() => setView('shop')} />}
+        {view === 'shop' && user && <ShopView user={user} onClose={() => setView('dashboard')} onAddCredits={handleAddCredits} onSubscribe={handleSubscribe} onCancelSubscription={handleCancelSubscription} />}
+        {view === 'generating' && (
+          <div className="flex flex-col items-center justify-center py-10 space-y-12 animate-fadeIn max-w-3xl mx-auto text-center">
+            <div className="space-y-8 w-full">
+              <div className="relative mx-auto w-36 h-36 flex items-center justify-center">
+                <div className="absolute inset-0 animate-spin rounded-full border-t-4 border-b-4 border-indigo-600/30"></div>
+                <div className="absolute inset-2 animate-spin rounded-full border-r-4 border-l-4 border-indigo-500/20 [animation-duration:1.5s] [animation-direction:reverse]"></div>
+                <div className="text-indigo-600 text-5xl drop-shadow-lg" style={{ animation: 'pulseBrain 2s infinite ease-in-out' }}>
+                  <i className="fa-solid fa-brain"></i>
+                </div>
+              </div>
+              
+              <div className="space-y-4">
+                <h2 className="text-3xl font-black tracking-tight">Creating Exam Content...</h2>
+                <div className="flex flex-col items-center space-y-3 px-10">
+                  <div className="w-full h-4 bg-slate-200 dark:bg-slate-800 rounded-full overflow-hidden shadow-inner border border-slate-300/50 dark:border-white/5">
+                    <div 
+                      className="h-full bg-gradient-to-r from-indigo-500 to-indigo-700 transition-all duration-700 ease-out relative" 
+                      style={{ width: `${calculateGenerationProgress()}%` }}
+                    >
+                      <div className="absolute inset-0 bg-[linear-gradient(45deg,rgba(255,255,255,0.1)_25%,transparent_25%,transparent_50%,rgba(255,255,255,0.1)_50%,rgba(255,255,255,0.1)_75%,transparent_75%,transparent)] bg-[length:20px_20px] animate-[pulse_2s_infinite]"></div>
+                    </div>
+                  </div>
+                  <div className="flex justify-between w-full text-[10px] font-black text-slate-400 uppercase tracking-widest">
+                    <span>{genProgress.section?.replace('_', ' ')}</span>
+                    <span>{calculateGenerationProgress()}%</span>
+                  </div>
+                </div>
+              </div>
             </div>
+            
+            {shuffledHints.length > 0 && (
+              <div className="w-full bg-white dark:bg-slate-800 p-10 rounded-[3rem] shadow-xl border-2 border-indigo-100 dark:border-indigo-900/30 relative overflow-hidden group">
+                <div className="absolute top-0 left-0 w-2 h-full bg-indigo-500"></div>
+                <div className="flex flex-col items-start text-left">
+                  <p className="text-[10px] font-black text-indigo-500 uppercase tracking-[0.2em] mb-4 flex items-center">
+                    <i className="fa-solid fa-lightbulb mr-2 animate-pulse"></i>
+                    Study Tip / 知ってた？
+                  </p>
+                  <p className="text-xl font-bold leading-relaxed text-slate-800 dark:text-slate-100">
+                    {shuffledHints[currentHintIdx]}
+                  </p>
+                </div>
+                <div className="absolute bottom-0 left-0 h-1 bg-slate-100 dark:bg-slate-900/50 w-full">
+                  <div 
+                    key={currentHintIdx} 
+                    className="h-full bg-indigo-500" 
+                    style={{ animation: 'hintTimer 20s linear forwards' }}
+                  ></div>
+                </div>
+              </div>
+            )}
           </div>
         )}
+        {view === 'exam' && user && <ExamView questions={currentExam} user={user} grade={selectedGrade} onFinish={finishExam} onRemakeQuestion={handleRemake} />}
+        {view === 'results' && lastResult && <ResultsView result={lastResult} onRetry={handleRetakeSame} onDashboard={() => setView('dashboard')} onStartNewMock={() => startExamFlow(false)} onStartReview={() => {}} />}
       </main>
     </div>
   );
 };
-
 export default App;

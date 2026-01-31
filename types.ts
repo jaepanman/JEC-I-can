@@ -15,7 +15,7 @@ export interface Question {
   type: QuestionType;
   context?: string;
   text: string;
-  skeleton?: string; // For SENTENCE_ORDER: "Please ( ) [ 2 ] ( ) [ 4 ] ( ) today."
+  skeleton?: string; // For SENTENCE_ORDER: e.g., "[ 1 ] ( ) [ 3 ] ( )"
   options: string[];
   correctAnswer: number;
   explanation: string;
@@ -32,11 +32,12 @@ export interface ExamResult {
   total: number;
   isPassed: boolean;
   timestamp: number;
-  durationSeconds: number; // For speed/patience badges
+  durationSeconds: number;
   missedQuestions: MissedQuestionEntry[];
   isTargetPractice?: boolean;
   targetSection?: TargetSection;
   grade?: EikenGrade;
+  newBadges?: Badge[]; // Tracks badges earned in THIS session
 }
 
 export interface Badge {
@@ -47,24 +48,30 @@ export interface Badge {
   icon: string;
   color: string;
   earnedAt: number;
+  count: number; // For leveling up
 }
 
 export interface UserStats {
   totalQuestionsAnswered: number;
   streakCount: number;
   lastStudyTimestamp: number;
-  remakeUsed: boolean;
+  remakeCountToday: number;
+  lastRemakeDate: string;
   targetCompletions: Record<TargetSection, number>;
+  examsTakenToday: number;
+  targetExamsTakenToday: number; // New: Tracks daily target practice sessions
+  lastExamDate: string;
+  // Track which sections are completed for each theme
+  // Format: { "Animals": { "PART_1": true, "PART_2": false ... } }
+  thematicProgress?: Record<string, Record<string, boolean>>;
 }
 
 export interface User {
   id: string;
-  name: string; // Student Kanji
+  name: string;
   studentFurigana?: string;
-  pin: string; // School PIN
-  barcodeNumber?: string; // Entry/Exit Card ID (Security Key)
-  
-  // At-Home specific fields
+  pin: string;
+  barcodeNumber?: string;
   isHomeUser: boolean;
   parentEmail?: string;
   parentNameKanji?: string;
@@ -72,7 +79,6 @@ export interface User {
   hashedPassword?: string;
   credits: number;
   hasSubscription: boolean;
-
   history: ExamResult[];
   badges: Badge[];
   stats: UserStats;

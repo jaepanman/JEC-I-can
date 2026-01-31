@@ -1,18 +1,21 @@
 
+import { Question, QuestionType, User, EikenGrade } from '../types';
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { Question, QuestionType } from '../types';
 
 interface ExamViewProps {
   questions: Question[];
+  user: User;
+  grade: EikenGrade | null;
   onFinish: (answers: number[], remainingTime: number) => void;
   onRemakeQuestion: (index: number) => Promise<void>;
 }
 
-const ExamView: React.FC<ExamViewProps> = ({ questions, onFinish, onRemakeQuestion }) => {
+const ExamView: React.FC<ExamViewProps> = ({ questions, user, grade, onFinish, onRemakeQuestion }) => {
+  const totalSeconds = grade === 'GRADE_5' ? 25 * 60 : 35 * 60;
   const [currentIdx, setCurrentIdx] = useState(0);
   const [answers, setAnswers] = useState<number[]>(new Array(questions.length).fill(-1));
-  const [timeLeft, setTimeLeft] = useState(35 * 60);
-  const timeLeftRef = useRef(35 * 60);
+  const [timeLeft, setTimeLeft] = useState(totalSeconds);
+  const timeLeftRef = useRef(totalSeconds);
   const [showRemakeDialog, setShowRemakeDialog] = useState(false);
   const [isRemaking, setIsRemaking] = useState(false);
 
@@ -94,28 +97,33 @@ const ExamView: React.FC<ExamViewProps> = ({ questions, onFinish, onRemakeQuesti
   const currentQ = questions[currentIdx];
   const progress = ((currentIdx + 1) / questions.length) * 100;
   
-  const isOrdering = currentQ?.type === QuestionType.SENTENCE_ORDER;
+  const isOrdering = currentQ?.type === QuestionType.SENTENCE_ORDER || (currentQ?.skeleton && currentQ.skeleton.includes('['));
   const isNull = currentQ?.text === 'null' || !currentQ || !currentQ.text;
 
   const renderSkeleton = (skeleton: string) => {
-    // Splits by spaces or specific markers
-    const parts = skeleton.split(/(\( \)|\[ 1 \]|\[ 2 \]|\[ 3 \]|\[ 4 \])/);
+    const parts = skeleton.split(/(\(___\)|\[ \d \])/);
+    let boxCounter = 0;
+    
     return (
-      <div className="flex flex-wrap items-center justify-center gap-x-3 gap-y-6 py-8 border-y-2 border-slate-100 dark:border-slate-700 my-6 bg-slate-50/30 dark:bg-slate-900/20 rounded-2xl px-4">
+      <div className="flex flex-wrap items-center justify-center gap-x-1.5 md:gap-x-3 gap-y-6 py-8 border-y-2 border-slate-100 dark:border-slate-700 my-6 bg-slate-50/30 dark:bg-slate-900/20 rounded-2xl px-4">
         {parts.map((part, i) => {
-          if (!part.trim()) return null;
-          if (part === "( )") {
+          if (!part) return null;
+          
+          if (part === "(___)") {
             return (
-              <div key={i} className="flex flex-col items-center">
-                 <div className="w-10 md:w-12 h-1 bg-slate-300 dark:bg-slate-600 rounded-full mt-6"></div>
+              <div key={i} className="flex flex-col items-center min-w-[3rem]">
+                 <div className="w-10 md:w-12 h-1 bg-slate-400 dark:bg-slate-500 rounded-full mt-6"></div>
               </div>
             );
           }
+
           const boxMatch = part.match(/\[ (\d) \]/);
           if (boxMatch) {
             const num = boxMatch[1];
-            const label = num === '1' || num === '2' ? 'X' : 'Y';
+            boxCounter++;
+            const label = boxCounter === 1 ? 'X' : 'Y';
             const ordinal = num === '1' ? '1st' : num === '2' ? '2nd' : num === '3' ? '3rd' : '4th';
+            
             return (
               <div key={i} className="flex flex-col items-center">
                 <span className="text-[10px] font-black text-indigo-500 dark:text-indigo-400 uppercase mb-1">{ordinal}</span>
@@ -125,27 +133,47 @@ const ExamView: React.FC<ExamViewProps> = ({ questions, onFinish, onRemakeQuesti
               </div>
             );
           }
-          return <span key={i} className="text-xl font-black text-slate-800 dark:text-slate-200 self-end mb-2">{part}</span>;
+          
+          // Regular text (fixed words)
+          if (part.trim() === '') return <div key={i} className="w-2"></div>;
+
+          return (
+            <span key={i} className="text-xl md:text-2xl font-black text-slate-800 dark:text-slate-200 self-end mb-2 px-1">
+              {part}
+            </span>
+          );
         })}
       </div>
     );
   };
 
+  const today = new Date().toISOString().split('T')[0];
+  const remakeCountToday = user.stats.lastRemakeDate === today ? user.stats.remakeCountToday : 0;
+  const remakesRemaining = Math.max(0, 5 - remakeCountToday);
+
   return (
     <div className="max-w-4xl mx-auto pb-20 relative px-4">
       {showRemakeDialog && (
         <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-[100] flex items-center justify-center p-4">
-          <div className="bg-white dark:bg-slate-800 rounded-3xl p-8 max-sm w-full shadow-2xl animate-popIn border border-slate-100 dark:border-slate-700">
-            <div className="w-16 h-16 bg-amber-50 dark:bg-amber-900/30 text-amber-500 rounded-full flex items-center justify-center mx-auto mb-6 text-2xl">
+          <div className="bg-white dark:bg-slate-800 rounded-[3rem] p-10 max-w-lg w-full shadow-2xl animate-popIn border border-slate-100 dark:border-slate-700">
+            <div className="w-20 h-20 bg-amber-50 dark:bg-amber-900/30 text-amber-500 rounded-[1.5rem] flex items-center justify-center mx-auto mb-8 text-3xl shadow-inner">
               <i className="fa-solid fa-arrows-rotate"></i>
             </div>
-            <h3 className="text-xl font-bold text-slate-800 dark:text-white text-center mb-2">Remake Question?</h3>
-            <p className="text-slate-500 dark:text-slate-400 text-center mb-8 text-sm">
-              Generating a new version of this question.
+            
+            <h3 className="text-2xl font-black text-slate-800 dark:text-white text-center mb-2 tracking-tight">Remake Question?</h3>
+            <p className="text-slate-500 dark:text-slate-400 text-center mb-8 text-sm font-bold">
+              リメイク残り: {remakesRemaining}回
             </p>
+
             <div className="grid grid-cols-2 gap-4">
-              <button onClick={() => setShowRemakeDialog(false)} className="py-3 px-6 bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-200 font-bold rounded-xl transition-all">Cancel</button>
-              <button onClick={triggerRemake} className="py-3 px-6 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-xl shadow-lg transition-all">Remake</button>
+              <button onClick={() => setShowRemakeDialog(false)} className="py-4 px-6 bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-200 font-black rounded-2xl transition-all active:scale-95">CANCEL</button>
+              <button 
+                onClick={triggerRemake} 
+                disabled={remakesRemaining <= 0}
+                className="py-4 px-6 bg-indigo-600 hover:bg-indigo-700 text-white font-black rounded-2xl shadow-lg transition-all active:scale-95 disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                REMAKE
+              </button>
             </div>
           </div>
         </div>
@@ -175,7 +203,7 @@ const ExamView: React.FC<ExamViewProps> = ({ questions, onFinish, onRemakeQuesti
            <span className="px-4 py-1.5 bg-indigo-50 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400 text-[10px] font-black uppercase tracking-widest rounded-full border border-indigo-100 dark:border-indigo-800">
              {currentQ?.type?.replace('_', ' ')}
            </span>
-           <button onClick={() => setShowRemakeDialog(true)} className="text-slate-300 hover:text-indigo-500 transition-colors">
+           <button onClick={() => setShowRemakeDialog(true)} className="text-slate-300 hover:text-indigo-500 transition-all transform hover:rotate-180 active:scale-90">
              <i className="fa-solid fa-arrows-rotate text-lg"></i>
            </button>
         </div>
@@ -195,18 +223,18 @@ const ExamView: React.FC<ExamViewProps> = ({ questions, onFinish, onRemakeQuesti
               </div>
               
               <div className="p-8 bg-white dark:bg-slate-700/50 rounded-3xl border-2 border-slate-100 dark:border-slate-600 shadow-sm">
-                <p className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest mb-4">Words to Arrange / 単語</p>
+                <p className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest mb-4">Fragments / 単語リスト</p>
                 <p className="text-2xl font-black text-indigo-600 dark:text-indigo-300 italic tracking-wide font-serif leading-loose">
                   {currentQ.context}
                 </p>
               </div>
               
-              {renderSkeleton(currentQ.skeleton || "[ 1 ] ( ) [ 3 ] ( )")}
+              {renderSkeleton(currentQ.skeleton || "(___) [ 2 ] (___) [ 4 ] (___)")}
             </div>
           ) : (
             <div className="animate-fadeIn">
               {currentQ.context && (
-                <div className="mb-8 p-8 bg-slate-50 dark:bg-slate-700/30 rounded-3xl border-2 border-slate-100 dark:border-slate-600 text-xl font-serif leading-relaxed text-slate-700 dark:text-slate-200 italic shadow-inner">
+                <div className="mb-8 p-8 bg-slate-50 dark:bg-slate-700/30 rounded-3xl border-2 border-slate-100 dark:border-slate-600 text-xl font-serif leading-relaxed text-slate-700 dark:text-slate-200 italic shadow-inner whitespace-pre-wrap">
                   {currentQ.context}
                 </div>
               )}
