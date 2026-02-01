@@ -13,8 +13,8 @@ const AUTHENTIC_THEMES = [
 
 const GRADE_4_PART_2_PROMPT = `Section 2: Conversations (Questions 16–20)
 Instructions: Create dialogue items. Use A-B format (2 lines) or A-B-A format (3 lines).
-CRITICAL: Speaker A and Speaker B must ALWAYS be separated by a literal newline character (\\n). 
-DO NOT USE HTML TAGS LIKE <br>. Use plain text.
+CRITICAL: Speaker A and Speaker B must ALWAYS be separated by a literal newline character (\n). 
+DO NOT USE HTML TAGS.
 Choices must be complete sentences or standard phrases. All blanks MUST be exactly "(___)".`;
 
 const GRADE_4_PART_3_PROMPT = `Section 3: Sentence Rearranging (Questions 21–25)
@@ -31,11 +31,20 @@ CRITICAL RULE: Grade 5 Part 3 ALWAYS asks for the combination of the 1st and 3rd
 2. 'options' MUST be 4 strings of hyphenated pairs (IDs 1-4), e.g., "1-3".`;
 
 const GRADE_4_PART_4_PROMPT = `Section 4: Reading Comprehension (Questions 26–35)
-Format passages like professional flyers, emails, or stories using clear headers and \\n for layout.
-Flyer: [TITLE], dashed dividers, bullet points.
-Email: From/To/Subject headers, formal greeting.
-Story: [TITLE], paragraphs.
-DO NOT USE HTML TAGS. Use plain text and newlines.`;
+Part 4B (Q28–30 - Email):
+- Structure: A 3-paragraph email.
+- Theme: A student writing to a host family or pen-pal about a specific local problem or success (e.g., "learned sushi", "school garden grew 50 tomatoes").
+- CRITICAL: NO generic "How are you?" fillers. 
+- Must include a response section where the sender replies to specific questions asked in a previous email.
+
+Part 4C (Q31–35 - Narrative):
+- Structure: A 180-word story titled "A Small Achievement".
+- Theme: A character (e.g., Hiro or Elena) tries something new (e.g., birdwatching, magic trick, helping a neighbor).
+- Paragraph 1: The Motivation (Why they started).
+- Paragraph 2: The Process (What specifically happened? Use past tense).
+- Paragraph 3: The Result & Reflection (What they learned).
+
+Passage Formatting: Use [TITLE], headers (From/To/Subject), and dividers (---). NO HTML TAGS. Use plain text and newlines.`;
 
 const SECTION_DEFS: Record<TargetSection, string> = {
   PART_1: `Section 1. Vocabulary and Grammar. Short conversations or single sentences. Focus on daily life. All blanks MUST be "(___)". DO NOT USE HTML.`,
@@ -98,16 +107,15 @@ function getValidApiKey(): string {
   if (cleanedKey.length > 0) {
     console.log(`[Gemini Auth] Key found (Length: ${cleanedKey.length}). Starts with: ${cleanedKey.substring(0, 4)}...`);
   } else {
-    console.warn("[Gemini Auth] API Key is empty! Please check VITE_API_KEY in Vercel.");
+    console.warn("[Gemini Auth] API Key is empty! Please check VITE_API_KEY.");
   }
 
   if (!cleanedKey || cleanedKey === "undefined" || cleanedKey === "null" || cleanedKey.length < 10) {
-    throw new Error("Missing API Key. Ensure VITE_API_KEY is set in Vercel.");
+    throw new Error("Missing API Key. Ensure VITE_API_KEY is set.");
   }
   return cleanedKey;
 }
 
-// Helper for retrying API calls with exponential backoff
 async function retryWithBackoff<T>(fn: () => Promise<T>, maxRetries = 3): Promise<T> {
   let delay = 2000;
   for (let i = 0; i < maxRetries; i++) {
@@ -120,7 +128,7 @@ async function retryWithBackoff<T>(fn: () => Promise<T>, maxRetries = 3): Promis
       if ((isOverloaded || isRateLimited) && i < maxRetries - 1) {
         console.warn(`[Gemini] Model busy. Retrying in ${delay}ms... (Attempt ${i + 1}/${maxRetries})`);
         await new Promise(resolve => setTimeout(resolve, delay));
-        delay *= 2; // Exponential increase
+        delay *= 2; 
         continue;
       }
       throw error;
@@ -164,7 +172,7 @@ export async function* streamQuestions(grade: EikenGrade, section: TargetSection
   } catch (error: any) {
     console.error("GEMINI_API_ERROR:", error);
     if (error.message?.includes("400") || error.message?.includes("API key not valid")) {
-      throw new Error("Google API Key Error: Please go to Google Cloud Console and enable the 'Generative Language API' for this project.");
+      throw new Error("Google API Key Error: Please go to Google Cloud Console and enable the 'Generative Language API'.");
     }
     if (error.message?.includes("503") || error.message?.includes("overloaded")) {
       throw new Error("AI is currently busy / AIが混み合っています。少し時間をおいてからもう一度お試しください。");

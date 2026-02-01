@@ -219,7 +219,6 @@ const App: React.FC = () => {
       if (!isSchool) userStats.targetExamsTakenToday += 1;
     }
 
-    // Temporarily track state
     const originalUser = { ...user };
     const updatedUser = { ...user, stats: userStats };
     setUser(updatedUser);
@@ -248,15 +247,12 @@ const App: React.FC = () => {
       setView('exam');
     } catch (err: any) {
       console.error("EXAM_START_ERROR:", err);
-      // Revert credits/stats locally if it failed due to overload/error
       setUser(originalUser);
       localStorage.setItem('eiken_user', JSON.stringify(originalUser));
-      
       const isOverload = err.message?.includes("busy") || err.message?.includes("overloaded");
       const errorMessage = isOverload 
         ? "AI is currently busy. Please wait 1-2 minutes and try again.\nAIが混み合っています。1～2分ほど待ってからもう一度お試しください。"
         : err.message || "Unknown error / 不明なエラー";
-      
       alert(errorMessage);
       setView('dashboard');
     }
@@ -299,144 +295,120 @@ const App: React.FC = () => {
   };
 
   const finishExam = (answers: number[], timeLeft: number) => {
-    if (!user || !selectedGrade) return;
-    const score = currentExam.reduce((acc, q, i) => acc + (answers[i] === q.correctAnswer ? 1 : 0), 0);
-    const totalTime = selectedGrade === 'GRADE_5' ? 25 * 60 : 35 * 60;
-    const durationSeconds = totalTime - timeLeft;
-    const isTarget = !isCurrentSessionMock;
-    const targetSection = isTarget ? currentExam[0].category as TargetSection : undefined;
-
-    let updatedStats = { ...user.stats };
-    const today = new Date().toISOString().split('T')[0];
-    const lastDate = new Date(updatedStats.lastStudyTimestamp).toISOString().split('T')[0];
+    if (!user || !selectedGrade || currentExam.length === 0) return;
     
-    if (lastDate !== today) {
-      const yesterday = new Date();
-      yesterday.setDate(yesterday.getDate() - 1);
-      const yesterdayStr = yesterday.toISOString().split('T')[0];
-      if (lastDate === yesterdayStr) updatedStats.streakCount += 1;
-      else updatedStats.streakCount = 1;
-      updatedStats.lastStudyTimestamp = Date.now();
-    }
-    
-    if (isTarget && targetSection) {
-      updatedStats.targetCompletions[targetSection] = (updatedStats.targetCompletions[targetSection] || 0) + 1;
-    }
+    try {
+      const now = Date.now();
+      const score = currentExam.reduce((acc, q, i) => acc + (answers[i] === q.correctAnswer ? 1 : 0), 0);
+      const totalTime = selectedGrade === 'GRADE_5' ? 25 * 60 : 35 * 60;
+      const durationSeconds = totalTime - timeLeft;
+      const isTarget = !isCurrentSessionMock;
+      const targetSection = isTarget ? currentExam[0].category as TargetSection : undefined;
+      const isPassed = (score / currentExam.length) >= 0.6;
 
-    const newBadges: Badge[] = [...user.badges];
-    const newlyEarnedBadges: Badge[] = [];
-    const now = Date.now();
+      const result: ExamResult = {
+        score,
+        total: currentExam.length,
+        isPassed,
+        timestamp: now,
+        durationSeconds,
+        missedQuestions: currentExam
+          .map((q, i) => ({ question: q, userAnswer: answers[i] }))
+          .filter(entry => entry.userAnswer !== entry.question.correctAnswer),
+        isTargetPractice: isTarget,
+        targetSection,
+        grade: selectedGrade,
+        newBadges: [] // populated below
+      };
 
-    const addBadge = (id: string, name: string, desc: string, jp: string, icon: string, color: string, canLevelUp: boolean = true) => {
-      const existingIdx = newBadges.findIndex(b => b.id === id);
-      if (existingIdx !== -1) {
-        if (!canLevelUp) return; 
-        newBadges[existingIdx] = { ...newBadges[existingIdx], count: newBadges[existingIdx].count + 1, earnedAt: now };
-        newlyEarnedBadges.push(newBadges[existingIdx]);
-      } else {
-        const b = { id, name, description: desc, jpDescription: jp, icon, color, earnedAt: now, count: 1 };
-        newBadges.push(b);
-        newlyEarnedBadges.push(b);
-      }
-    };
-
-    const isPassed = (score / currentExam.length) >= 0.6;
-
-    if (isTarget && targetSection && currentTheme && isPassed) {
-      if (!updatedStats.thematicProgress) updatedStats.thematicProgress = {};
-      if (!updatedStats.thematicProgress[currentTheme]) updatedStats.thematicProgress[currentTheme] = {};
-      updatedStats.thematicProgress[currentTheme][targetSection] = true;
+      let updatedStats = { ...user.stats };
+      const today = new Date().toISOString().split('T')[0];
+      const lastDate = new Date(updatedStats.lastStudyTimestamp).toISOString().split('T')[0];
       
-      const requiredSections = selectedGrade === 'GRADE_5' ? ['PART_1', 'PART_2', 'PART_3'] : ['PART_1', 'PART_2', 'PART_3', 'PART_4'];
-      const allDone = requiredSections.every(s => updatedStats.thematicProgress![currentTheme][s]);
+      if (lastDate !== today) {
+        const yesterday = new Date();
+        yesterday.setDate(yesterday.getDate() - 1);
+        const yesterdayStr = yesterday.toISOString().split('T')[0];
+        if (lastDate === yesterdayStr) updatedStats.streakCount += 1;
+        else updatedStats.streakCount = 1;
+        updatedStats.lastStudyTimestamp = now;
+      }
       
-      if (allDone) {
-        const themeLabel = currentTheme.split(' ')[0];
-        addBadge(`theme_${currentTheme}`, `${themeLabel} Master`, `Complete all sections for "${currentTheme}" theme.`, `${currentTheme}テーマの全セクションを制覇しました！`, 'fa-medal', 'bg-gradient-to-r from-indigo-500 to-purple-600 text-white');
+      if (isTarget && targetSection) {
+        updatedStats.targetCompletions[targetSection] = (updatedStats.targetCompletions[targetSection] || 0) + 1;
       }
+
+      const newBadges: Badge[] = [...user.badges];
+      const newlyEarnedBadges: Badge[] = [];
+
+      const addBadge = (id: string, name: string, desc: string, jp: string, icon: string, color: string, canLevelUp: boolean = true) => {
+        const existingIdx = newBadges.findIndex(b => b.id === id);
+        if (existingIdx !== -1) {
+          if (!canLevelUp) return; 
+          newBadges[existingIdx] = { ...newBadges[existingIdx], count: newBadges[existingIdx].count + 1, earnedAt: now };
+          newlyEarnedBadges.push(newBadges[existingIdx]);
+        } else {
+          const b = { id, name, description: desc, jpDescription: jp, icon, color, earnedAt: now, count: 1 };
+          newBadges.push(b);
+          newlyEarnedBadges.push(b);
+        }
+      };
+
+      if (isTarget && targetSection && currentTheme && isPassed) {
+        if (!updatedStats.thematicProgress) updatedStats.thematicProgress = {};
+        if (!updatedStats.thematicProgress[currentTheme]) updatedStats.thematicProgress[currentTheme] = {};
+        updatedStats.thematicProgress[currentTheme][targetSection] = true;
+        
+        const reqSections = selectedGrade === 'GRADE_5' ? ['PART_1', 'PART_2', 'PART_3'] : ['PART_1', 'PART_2', 'PART_3', 'PART_4'];
+        const allDone = reqSections.every(s => updatedStats.thematicProgress![currentTheme][s]);
+        if (allDone) {
+          const themeLabel = currentTheme.split(' ')[0];
+          addBadge(`theme_${currentTheme}`, `${themeLabel} Master`, `Complete all sections for "${currentTheme}" theme.`, `${currentTheme}テーマの全セクションを制覇しました！`, 'fa-medal', 'bg-gradient-to-r from-indigo-500 to-purple-600 text-white');
+        }
+      }
+
+      addBadge('first_step', 'First Step', 'Complete your first session.', '初めてのトレーニングを完了しました。', 'fa-shoe-prints', 'bg-blue-500 text-white', false);
+
+      const historyToday = [...user.history, result].filter(h => 
+        new Date(h.timestamp).toISOString().split('T')[0] === today
+      );
+
+      const reqSections = selectedGrade === 'GRADE_5' ? ['PART_1', 'PART_2', 'PART_3'] : ['PART_1', 'PART_2', 'PART_3', 'PART_4'];
+      const partsPassedToday = new Set(historyToday.filter(h => h.isTargetPractice && h.isPassed).map(h => h.targetSection));
+      if (reqSections.every(s => partsPassedToday.has(s as TargetSection))) {
+        addBadge('daily_sweep', 'Daily Sweep', 'Pass all skill sections in one day.', '1日で全スキルの練習に合格しました！', 'fa-broom', 'bg-emerald-600 text-white');
+      }
+
+      reqSections.forEach(s => {
+        const count = historyToday.filter(h => h.isTargetPractice && h.targetSection === s).length;
+        const partName = s.replace('PART_', 'Part ');
+        const jpName = s === 'PART_1' ? '語彙・文法' : s === 'PART_2' ? '対話文' : s === 'PART_3' ? '並び替え' : '読解';
+        if (count >= 5) addBadge(`skill_5_${s}`, `${partName} Enthusiast`, `5 sessions in one day.`, `1日で${jpName}練習を5回達成。`, 'fa-bolt', 'bg-indigo-400 text-white');
+        if (count >= 10) addBadge(`skill_10_${s}`, `${partName} Legend`, `10 sessions in one day.`, `1日で${jpName}練習を10回達成！`, 'fa-fire-flame-simple', 'bg-rose-500 text-white');
+      });
+
+      if (isCurrentSessionMock) {
+        if (score === currentExam.length) addBadge('perfect_100', 'Mock Perfect', '100% on mock exam.', '模擬試験で100点を獲得！', 'fa-crown', 'bg-yellow-500 text-white');
+        const mocksToday = updatedStats.examsTakenToday;
+        if (mocksToday === 2) addBadge('daily_mock_2', 'Double Down', '2 mocks in 1 day.', '1日2回の模擬試験。', 'fa-dice-two', 'bg-indigo-500 text-white');
+      }
+
+      const sc = updatedStats.streakCount;
+      if (sc >= 3) addBadge('streak_3', '3-Day Streak', 'Study 3 days.', '3日連続学習！', 'fa-fire', 'bg-orange-400 text-white');
+      if (sc >= 30) addBadge('streak_30', 'Monthly Warrior', 'Study 30 days.', '30日連続学習達成！', 'fa-trophy', 'bg-violet-600 text-white');
+
+      result.newBadges = newlyEarnedBadges;
+
+      const updatedUser = { ...user, history: [...user.history, result], badges: newBadges, stats: updatedStats };
+      setUser(updatedUser);
+      setLastResult(result);
+      localStorage.setItem('eiken_user', JSON.stringify(updatedUser));
+      syncUserToGas(updatedUser, 'updateStats');
+      setView('results');
+    } catch (err) {
+      console.error("CRITICAL_FINISH_ERROR:", err);
+      alert("Error processing results. Please try again.");
     }
-
-    addBadge('first_step', 'First Step', 'Complete your first session.', '初めてのトレーニングを完了しました。', 'fa-shoe-prints', 'bg-blue-500 text-white', false);
-
-    const historyToday = [...user.history, { timestamp: now, isTargetPractice: isTarget, isPassed, targetSection }].filter(h => 
-      new Date(h.timestamp).toISOString().split('T')[0] === today
-    );
-
-    const requiredSections = selectedGrade === 'GRADE_5' ? ['PART_1', 'PART_2', 'PART_3'] : ['PART_1', 'PART_2', 'PART_3', 'PART_4'];
-    const partsPassedToday = new Set(historyToday.filter(h => h.isTargetPractice && h.isPassed).map(h => h.targetSection));
-    if (requiredSections.every(s => partsPassedToday.has(s as TargetSection))) {
-      addBadge('daily_sweep', 'Daily Sweep', 'Pass all skill sections in one day.', '1日で全スキルの練習に合格しました！', 'fa-broom', 'bg-emerald-600 text-white');
-    }
-
-    requiredSections.forEach(s => {
-      const sectionCount = historyToday.filter(h => h.isTargetPractice && h.targetSection === s).length;
-      const partName = s.replace('PART_', 'Part ');
-      const jpName = s === 'PART_1' ? '語彙・文法' : s === 'PART_2' ? '対話文' : s === 'PART_3' ? '並び替え' : '読解';
-      
-      if (sectionCount >= 5) {
-        addBadge(`skill_5_${s}`, `${partName} Enthusiast`, `Complete 5 ${partName} sessions in one day.`, `1日で${jpName}練習を5回達成しました。`, 'fa-bolt', 'bg-indigo-400 text-white');
-      }
-      if (sectionCount >= 10) {
-        addBadge(`skill_10_${s}`, `${partName} Legend`, `Complete 10 ${partName} sessions in one day.`, `1日で${jpName}練習を10回達成！伝説級です。`, 'fa-fire-flame-simple', 'bg-rose-500 text-white');
-      }
-    });
-
-    if (isCurrentSessionMock) {
-      if (score === currentExam.length) {
-        addBadge('perfect_100', 'Mock Perfect', 'Get 100% on a full mock exam.', '模擬試験で100点を獲得しました！完璧です。', 'fa-crown', 'bg-yellow-500 text-white');
-      }
-      if (selectedGrade === 'GRADE_4' && durationSeconds < 900) {
-        addBadge('speed_demon', 'Speed Demon', 'Finish G4 mock exam in under 15 min.', '4級模擬試験を15分未満で解きました。', 'fa-gauge-high', 'bg-red-500 text-white');
-      }
-      if (selectedGrade === 'GRADE_5' && durationSeconds < 600) {
-        addBadge('speed_demon', 'Speed Demon', 'Finish G5 mock exam in under 10 min.', '5級模擬試験を10分未満で解きました。', 'fa-gauge-high', 'bg-red-500 text-white');
-      }
-      const mocksToday = updatedStats.examsTakenToday;
-      if (mocksToday === 2) addBadge('daily_mock_2', 'Double Down', 'Complete 2 full exams in 1 day.', '1日2回の模擬試験を達成しました。', 'fa-dice-two', 'bg-indigo-500 text-white');
-      if (mocksToday === 5) addBadge('daily_mock_5', 'Power of Five', 'Complete 5 full exams in 1 day.', '1日5回の模擬試験を達成！', 'fa-5', 'bg-emerald-500 text-white');
-      if (mocksToday === 10) addBadge('daily_mock_10', 'Mock Marathon', 'Complete 10 full exams in 1 day.', '1日10回！伝説の記録です！', 'fa-trophy', 'bg-rose-600 text-white');
-    }
-
-    if (!isCurrentSessionMock && targetSection) {
-      if (isPassed && durationSeconds < 300) {
-        addBadge('skill_speedster', 'Quick Learner', 'Pass skill training in under 5 mins.', '5分以内にスキル練習に合格しました！', 'fa-bolt-lightning', 'bg-amber-400 text-slate-900');
-      }
-      if (score === currentExam.length) {
-        if (targetSection === 'PART_1') addBadge('perfect_part_1', 'Vocab Master', 'Get 100% on Part 1 training.', '語彙・文法練習で満点を獲得しました！', 'fa-spell-check', 'bg-emerald-500 text-white');
-        else if (targetSection === 'PART_2') addBadge('perfect_part_2', 'Dialogue Master', 'Get 100% on Part 2 training.', '対話文練習で満点を獲得しました！', 'fa-comments', 'bg-blue-500 text-white');
-        else if (targetSection === 'PART_3') addBadge('perfect_part_3', 'Order Master', 'Get 100% on Part 3 training.', '並び替え練習で満点を獲得しました！', 'fa-puzzle-piece', 'bg-violet-500 text-white');
-        else if (targetSection === 'PART_4' && selectedGrade === 'GRADE_4') addBadge('perfect_part_4', 'Reading Master', 'Get 100% on Part 4 training.', '読解練習で満点を獲得しました！', 'fa-book-open', 'bg-amber-600 text-white');
-      }
-    }
-
-    const sc = updatedStats.streakCount;
-    if (sc >= 3) addBadge('streak_3', '3-Day Streak', 'Study for 3 days in a row.', '3日連続学習！', 'fa-fire', 'bg-orange-400 text-white');
-    if (sc >= 5) addBadge('streak_5', 'High Five Streak', 'Study for 5 days in a row.', '5日連続学習達成！', 'fa-hand', 'bg-orange-500 text-white');
-    if (sc >= 10) addBadge('streak_10', 'Double Digits', 'Study for 10 days in a row.', '10日連続学習達成！', 'fa-fire-flame-curved', 'bg-rose-500 text-white');
-    if (sc >= 15) addBadge('streak_15', 'Fortnight Fighter', 'Study for 15 days in a row.', '15日連続学習達成！半月突破です！', 'fa-calendar-check', 'bg-violet-500 text-white');
-    if (sc >= 30) addBadge('streak_30', 'Monthly Warrior', 'Study for 30 days in a row.', '30日連続学習達成！一ヶ月皆勤です。', 'fa-trophy', 'bg-violet-600 text-white');
-
-    const result: ExamResult = {
-      score,
-      total: currentExam.length,
-      isPassed,
-      timestamp: Date.now(),
-      durationSeconds,
-      missedQuestions: currentExam
-        .map((q, i) => ({ question: q, userAnswer: answers[i] }))
-        .filter(entry => entry.userAnswer !== entry.question.correctAnswer),
-      isTargetPractice: !isCurrentSessionMock,
-      targetSection,
-      grade: selectedGrade,
-      newBadges: newlyEarnedBadges
-    };
-
-    const updatedUser = { ...user, history: [...user.history, result], badges: newBadges, stats: updatedStats };
-    setUser(updatedUser);
-    localStorage.setItem('eiken_user', JSON.stringify(updatedUser));
-    syncUserToGas(updatedUser, 'updateStats');
-    setLastResult(result);
-    setView('results');
   };
 
   const calculateGenerationProgress = () => {
@@ -444,9 +416,7 @@ const App: React.FC = () => {
     const sections: TargetSection[] = isCurrentSessionMock 
       ? (selectedGrade === 'GRADE_5' ? ['PART_1', 'PART_2', 'PART_3'] : ['PART_1', 'PART_2', 'PART_3', 'PART_4'])
       : [genProgress.section as TargetSection];
-    
     if (!isCurrentSessionMock) return 50; 
-
     const total = sections.length;
     const currentIdx = sections.indexOf(genProgress.section as TargetSection);
     if (currentIdx === -1) return 0;
@@ -456,16 +426,12 @@ const App: React.FC = () => {
   return (
     <div className="min-h-screen bg-slate-50 dark:bg-[#0f172a] text-slate-900 dark:text-white transition-colors relative">
       <style>{`
-        @keyframes hintTimer {
-          from { width: 0%; }
-          to { width: 100%; }
-        }
-        @keyframes pulseBrain {
+        @keyframes hintTimer { from { width: 0%; } to { width: 100%; } }
+        @keyframes pulseBrain { 
           0%, 100% { transform: scale(1); filter: drop-shadow(0 0 0px rgba(79, 70, 229, 0)); }
           50% { transform: scale(1.15); filter: drop-shadow(0 0 15px rgba(79, 70, 229, 0.4)); }
         }
       `}</style>
-
       {pendingPurchase && (
         <div className="fixed inset-0 z-[200] flex items-start justify-center animate-fadeIn">
           <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm" onClick={() => setPendingPurchase(null)}></div>
@@ -535,15 +501,11 @@ const App: React.FC = () => {
                   <i className="fa-solid fa-brain"></i>
                 </div>
               </div>
-              
               <div className="space-y-4">
                 <h2 className="text-3xl font-black tracking-tight">Creating Exam Content...</h2>
                 <div className="flex flex-col items-center space-y-3 px-10">
                   <div className="w-full h-4 bg-slate-200 dark:bg-slate-800 rounded-full overflow-hidden shadow-inner border border-slate-300/50 dark:border-white/5">
-                    <div 
-                      className="h-full bg-gradient-to-r from-indigo-500 to-indigo-700 transition-all duration-700 ease-out relative" 
-                      style={{ width: `${calculateGenerationProgress()}%` }}
-                    >
+                    <div className="h-full bg-gradient-to-r from-indigo-500 to-indigo-700 transition-all duration-700 ease-out relative" style={{ width: `${calculateGenerationProgress()}%` }}>
                       <div className="absolute inset-0 bg-[linear-gradient(45deg,rgba(255,255,255,0.1)_25%,transparent_25%,transparent_50%,rgba(255,255,255,0.1)_50%,rgba(255,255,255,0.1)_75%,transparent_75%,transparent)] bg-[length:20px_20px] animate-[pulse_2s_infinite]"></div>
                     </div>
                   </div>
@@ -554,7 +516,6 @@ const App: React.FC = () => {
                 </div>
               </div>
             </div>
-            
             {shuffledHints.length > 0 && (
               <div className="w-full bg-white dark:bg-slate-800 p-10 rounded-[3rem] shadow-xl border-2 border-indigo-100 dark:border-indigo-900/30 relative overflow-hidden group">
                 <div className="absolute top-0 left-0 w-2 h-full bg-indigo-500"></div>
@@ -563,16 +524,10 @@ const App: React.FC = () => {
                     <i className="fa-solid fa-lightbulb mr-2 animate-pulse"></i>
                     Study Tip / 知ってた？
                   </p>
-                  <p className="text-xl font-bold leading-relaxed text-slate-800 dark:text-slate-100">
-                    {shuffledHints[currentHintIdx]}
-                  </p>
+                  <p className="text-xl font-bold leading-relaxed text-slate-800 dark:text-slate-100">{shuffledHints[currentHintIdx]}</p>
                 </div>
                 <div className="absolute bottom-0 left-0 h-1 bg-slate-100 dark:bg-slate-900/50 w-full">
-                  <div 
-                    key={currentHintIdx} 
-                    className="h-full bg-indigo-500" 
-                    style={{ animation: 'hintTimer 20s linear forwards' }}
-                  ></div>
+                  <div key={currentHintIdx} className="h-full bg-indigo-500" style={{ animation: 'hintTimer 20s linear forwards' }}></div>
                 </div>
               </div>
             )}
