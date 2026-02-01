@@ -13,7 +13,7 @@ const AUTHENTIC_THEMES = [
 
 const GRADE_4_PART_2_PROMPT = `Section 2: Conversations (Questions 16–20)
 Instructions: Create dialogue items. Use A-B format (2 lines) or A-B-A format (3 lines).
-CRITICAL: Speaker A and Speaker B must ALWAYS be separated by a literal newline character (\n). 
+CRITICAL: Speaker A and Speaker B must ALWAYS be separated by a literal newline character (\\n). 
 DO NOT USE HTML TAGS.
 Choices must be complete sentences or standard phrases. All blanks MUST be exactly "(___)".`;
 
@@ -31,20 +31,20 @@ CRITICAL RULE: Grade 5 Part 3 ALWAYS asks for the combination of the 1st and 3rd
 2. 'options' MUST be 4 strings of hyphenated pairs (IDs 1-4), e.g., "1-3".`;
 
 const GRADE_4_PART_4_PROMPT = `Section 4: Reading Comprehension (Questions 26–35)
-Part 4B (Q28–30 - Email):
-- Structure: A 3-paragraph email.
-- Theme: A student writing to a host family or pen-pal about a specific local problem or success (e.g., "learned sushi", "school garden grew 50 tomatoes").
-- CRITICAL: NO generic "How are you?" fillers. 
-- Must include a response section where the sender replies to specific questions asked in a previous email.
+General Rules: Use [TITLE] for all passages. Use \\n for line breaks.
+
+Part 4B (Q28–30 - Email Exchange): 
+- Format: A 3-paragraph email with headers (From:/To:/Subject:). 
+- Theme: A student's personal message to a host family or friend about a specific event, achievement, or interesting local detail (e.g. learning a skill, a successful project, a trip).
+- Content: MUST answer specific questions (e.g. "You asked about my...", "To answer your question...") to simulate a real reply. Avoid generic fillers.
 
 Part 4C (Q31–35 - Narrative):
-- Structure: A 180-word story titled "A Small Achievement".
-- Theme: A character (e.g., Hiro or Elena) tries something new (e.g., birdwatching, magic trick, helping a neighbor).
-- Paragraph 1: The Motivation (Why they started).
-- Paragraph 2: The Process (What specifically happened? Use past tense).
-- Paragraph 3: The Result & Reflection (What they learned).
-
-Passage Formatting: Use [TITLE], headers (From/To/Subject), and dividers (---). NO HTML TAGS. Use plain text and newlines.`;
+- Title: "A Small Achievement" (REQUIRED TITLE).
+- Length: Approx 180 words.
+- Paragraph 1 (Motivation): Introduce a character and why they decided to start a new activity or project.
+- Paragraph 2 (Process): Describe the specific actions taken and hurdles overcome using past tense.
+- Paragraph 3 (Result): Describe the outcome and what the character felt or learned.
+- Be creative with varied character names and scenarios.`;
 
 const SECTION_DEFS: Record<TargetSection, string> = {
   PART_1: `Section 1. Vocabulary and Grammar. Short conversations or single sentences. Focus on daily life. All blanks MUST be "(___)". DO NOT USE HTML.`,

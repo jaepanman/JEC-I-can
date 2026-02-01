@@ -295,7 +295,10 @@ const App: React.FC = () => {
   };
 
   const finishExam = (answers: number[], timeLeft: number) => {
-    if (!user || !selectedGrade || currentExam.length === 0) return;
+    if (!user || !selectedGrade || currentExam.length === 0) {
+      console.warn("Exam finish blocked: Missing user, grade, or questions.");
+      return;
+    }
     
     try {
       const now = Date.now();
@@ -318,18 +321,18 @@ const App: React.FC = () => {
         isTargetPractice: isTarget,
         targetSection,
         grade: selectedGrade,
-        newBadges: [] // populated below
+        newBadges: [] 
       };
 
       let updatedStats = { ...user.stats };
       const today = new Date().toISOString().split('T')[0];
-      const lastDate = new Date(updatedStats.lastStudyTimestamp).toISOString().split('T')[0];
+      const lastStudyDate = updatedStats.lastStudyTimestamp ? new Date(updatedStats.lastStudyTimestamp).toISOString().split('T')[0] : "";
       
-      if (lastDate !== today) {
+      if (lastStudyDate !== today) {
         const yesterday = new Date();
         yesterday.setDate(yesterday.getDate() - 1);
         const yesterdayStr = yesterday.toISOString().split('T')[0];
-        if (lastDate === yesterdayStr) updatedStats.streakCount += 1;
+        if (lastStudyDate === yesterdayStr) updatedStats.streakCount += 1;
         else updatedStats.streakCount = 1;
         updatedStats.lastStudyTimestamp = now;
       }
@@ -338,14 +341,14 @@ const App: React.FC = () => {
         updatedStats.targetCompletions[targetSection] = (updatedStats.targetCompletions[targetSection] || 0) + 1;
       }
 
-      const newBadges: Badge[] = [...user.badges];
+      const newBadges: Badge[] = [...(user.badges || [])];
       const newlyEarnedBadges: Badge[] = [];
 
       const addBadge = (id: string, name: string, desc: string, jp: string, icon: string, color: string, canLevelUp: boolean = true) => {
         const existingIdx = newBadges.findIndex(b => b.id === id);
         if (existingIdx !== -1) {
           if (!canLevelUp) return; 
-          newBadges[existingIdx] = { ...newBadges[existingIdx], count: newBadges[existingIdx].count + 1, earnedAt: now };
+          newBadges[existingIdx] = { ...newBadges[existingIdx], count: (newBadges[existingIdx].count || 0) + 1, earnedAt: now };
           newlyEarnedBadges.push(newBadges[existingIdx]);
         } else {
           const b = { id, name, description: desc, jpDescription: jp, icon, color, earnedAt: now, count: 1 };
@@ -369,7 +372,8 @@ const App: React.FC = () => {
 
       addBadge('first_step', 'First Step', 'Complete your first session.', '初めてのトレーニングを完了しました。', 'fa-shoe-prints', 'bg-blue-500 text-white', false);
 
-      const historyToday = [...user.history, result].filter(h => 
+      const historyArray = user.history || [];
+      const historyToday = [...historyArray, result].filter(h => 
         new Date(h.timestamp).toISOString().split('T')[0] === today
       );
 
@@ -393,21 +397,28 @@ const App: React.FC = () => {
         if (mocksToday === 2) addBadge('daily_mock_2', 'Double Down', '2 mocks in 1 day.', '1日2回の模擬試験。', 'fa-dice-two', 'bg-indigo-500 text-white');
       }
 
-      const sc = updatedStats.streakCount;
+      const sc = updatedStats.streakCount || 1;
       if (sc >= 3) addBadge('streak_3', '3-Day Streak', 'Study 3 days.', '3日連続学習！', 'fa-fire', 'bg-orange-400 text-white');
       if (sc >= 30) addBadge('streak_30', 'Monthly Warrior', 'Study 30 days.', '30日連続学習達成！', 'fa-trophy', 'bg-violet-600 text-white');
 
       result.newBadges = newlyEarnedBadges;
 
-      const updatedUser = { ...user, history: [...user.history, result], badges: newBadges, stats: updatedStats };
+      const updatedUser = { ...user, history: [...historyArray, result], badges: newBadges, stats: updatedStats };
+      
+      // Perform state updates
       setUser(updatedUser);
       setLastResult(result);
+      
+      // Persist data
       localStorage.setItem('eiken_user', JSON.stringify(updatedUser));
       syncUserToGas(updatedUser, 'updateStats');
+      
+      // Change view - Ensuring this happens
       setView('results');
     } catch (err) {
       console.error("CRITICAL_FINISH_ERROR:", err);
-      alert("Error processing results. Please try again.");
+      alert("Error processing results. Finishing session anyway...");
+      setView('results');
     }
   };
 
