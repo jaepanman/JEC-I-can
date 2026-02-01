@@ -107,6 +107,28 @@ function getValidApiKey(): string {
   return cleanedKey;
 }
 
+// Helper for retrying API calls with exponential backoff
+async function retryWithBackoff<T>(fn: () => Promise<T>, maxRetries = 3): Promise<T> {
+  let delay = 2000;
+  for (let i = 0; i < maxRetries; i++) {
+    try {
+      return await fn();
+    } catch (error: any) {
+      const isOverloaded = error.message?.includes("503") || error.message?.includes("overloaded");
+      const isRateLimited = error.message?.includes("429");
+      
+      if ((isOverloaded || isRateLimited) && i < maxRetries - 1) {
+        console.warn(`[Gemini] Model busy. Retrying in ${delay}ms... (Attempt ${i + 1}/${maxRetries})`);
+        await new Promise(resolve => setTimeout(resolve, delay));
+        delay *= 2; // Exponential increase
+        continue;
+      }
+      throw error;
+    }
+  }
+  throw new Error("Max retries exceeded");
+}
+
 export async function* streamQuestions(grade: EikenGrade, section: TargetSection, theme?: string): AsyncGenerator<Question> {
   const apiKey = getValidApiKey();
   const config = GRADE_CONFIGS[grade] || GRADE_CONFIGS['GRADE_4']!;
@@ -125,7 +147,7 @@ export async function* streamQuestions(grade: EikenGrade, section: TargetSection
   const ai = new GoogleGenAI({ apiKey });
   
   try {
-    const response = await ai.models.generateContent({
+    const response = await retryWithBackoff(() => ai.models.generateContent({
       model: 'gemini-3-flash-preview',
       contents: prompt,
       config: {
@@ -133,7 +155,7 @@ export async function* streamQuestions(grade: EikenGrade, section: TargetSection
         responseSchema: { type: Type.ARRAY, items: questionSchema } as any,
         temperature: 0.8,
       },
-    });
+    }));
 
     const questions: any[] = extractJson(response.text);
     for (const q of questions) {
@@ -143,6 +165,9 @@ export async function* streamQuestions(grade: EikenGrade, section: TargetSection
     console.error("GEMINI_API_ERROR:", error);
     if (error.message?.includes("400") || error.message?.includes("API key not valid")) {
       throw new Error("Google API Key Error: Please go to Google Cloud Console and enable the 'Generative Language API' for this project.");
+    }
+    if (error.message?.includes("503") || error.message?.includes("overloaded")) {
+      throw new Error("AI is currently busy / AIが混み合っています。少し時間をおいてからもう一度お試しください。");
     }
     throw error;
   }
@@ -162,7 +187,7 @@ export async function remakeQuestion(grade: EikenGrade, original: Question): Pro
   const prompt = `Generate ONE new Eiken ${grade.replace('_', ' ')} question for ${section}. ${sectionPrompt} Return as JSON object. NO HTML.`;
 
   try {
-    const response = await ai.models.generateContent({
+    const response = await retryWithBackoff(() => ai.models.generateContent({
       model: 'gemini-3-flash-preview',
       contents: prompt,
       config: {
@@ -170,7 +195,7 @@ export async function remakeQuestion(grade: EikenGrade, original: Question): Pro
         responseSchema: questionSchema as any,
         temperature: 1.0,
       },
-    });
+    }));
     const newQ = extractJson(response.text);
     return { ...newQ, id: original.id, category: original.category, type: targetType };
   } catch (error: any) {

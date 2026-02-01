@@ -97,17 +97,80 @@ const ExamView: React.FC<ExamViewProps> = ({ questions, user, grade, onFinish, o
   const currentQ = questions[currentIdx];
   const progress = ((currentIdx + 1) / questions.length) * 100;
   
-  // Refined: Strictly use QuestionType to determine if it's an ordering question
   const isOrdering = currentQ?.type === QuestionType.SENTENCE_ORDER;
+  const isReading = currentQ?.type === QuestionType.READING_COMPREHENSION;
   const isNull = currentQ?.text === 'null' || !currentQ || !currentQ.text;
 
-  // Sanitize AI hallucinations like <br> tags
   const sanitizeText = (text: string) => {
     if (!text) return "";
     return text.replace(/<br\s*\/?>/gi, '\n');
   };
 
-  const renderSkeleton = (skeleton: string) => {
+  // Advanced Parser for Part 4 Context
+  const renderReadingPassage = (context: string) => {
+    const sanitized = sanitizeText(context);
+    const lines = sanitized.split('\n');
+    
+    // Detect sub-type
+    const isEmail = sanitized.includes('From:') || sanitized.includes('To:') || sanitized.includes('Subject:');
+    const isFlyer = lines.some(l => l.includes('---') || l.includes('***') || l.includes('===')) || (lines[0]?.startsWith('[') && lines[0]?.endsWith(']'));
+
+    return (
+      <div className="mb-10 bg-white dark:bg-slate-900/40 p-8 md:p-12 rounded-[2rem] border-2 border-slate-200 dark:border-slate-700 shadow-inner relative overflow-hidden">
+        {/* Paper texture or subtle lines */}
+        <div className="absolute top-0 right-0 p-4 opacity-5 pointer-events-none select-none">
+          <i className="fa-solid fa-file-lines text-9xl"></i>
+        </div>
+
+        <div className="relative z-10 space-y-4">
+          {lines.map((line, idx) => {
+            const trimmed = line.trim();
+            if (!trimmed) return <div key={idx} className="h-4"></div>;
+
+            // Email Headers
+            if (isEmail && (trimmed.startsWith('From:') || trimmed.startsWith('To:') || trimmed.startsWith('Date:') || trimmed.startsWith('Subject:'))) {
+              const [key, ...val] = trimmed.split(':');
+              return (
+                <div key={idx} className="flex border-b border-slate-100 dark:border-slate-800 pb-1 text-sm">
+                  <span className="font-black text-slate-400 w-20 uppercase tracking-tighter">{key}:</span>
+                  <span className="font-bold text-slate-700 dark:text-slate-200">{val.join(':').trim()}</span>
+                </div>
+              );
+            }
+
+            // Flyer/Header detection
+            if (trimmed.startsWith('[') && trimmed.endsWith(']')) {
+              return <h3 key={idx} className="text-2xl font-black text-center text-indigo-600 dark:text-indigo-400 py-4 mb-4 border-b-4 border-double border-indigo-100 dark:border-indigo-900/50 uppercase tracking-tight">{trimmed.slice(1, -1)}</h3>;
+            }
+
+            // Divider detection
+            if (trimmed.match(/^[-=*]{3,}$/)) {
+              return <hr key={idx} className="border-t-2 border-dashed border-slate-200 dark:border-slate-700 my-6" />;
+            }
+
+            // List detection
+            if (trimmed.startsWith('*') || trimmed.startsWith('-') || trimmed.match(/^\d\./)) {
+              return (
+                <div key={idx} className="flex items-start space-x-3 pl-4">
+                  <div className="w-1.5 h-1.5 rounded-full bg-indigo-500 mt-2 shrink-0"></div>
+                  <p className="text-lg font-bold text-slate-700 dark:text-slate-300 leading-relaxed">{trimmed.replace(/^[*-\d.]\s*/, '')}</p>
+                </div>
+              );
+            }
+
+            // Standard paragraph
+            return (
+              <p key={idx} className="text-lg md:text-xl font-serif font-medium leading-relaxed text-slate-700 dark:text-slate-200 text-justify">
+                {line}
+              </p>
+            );
+          })}
+        </div>
+      </div>
+    );
+  };
+
+  const renderOrderingSkeleton = (skeleton: string) => {
     const parts = skeleton.split(/(\(___\)|\[ \d \])/);
     let boxCounter = 0;
     
@@ -115,7 +178,6 @@ const ExamView: React.FC<ExamViewProps> = ({ questions, user, grade, onFinish, o
       <div className="flex flex-wrap items-center justify-center gap-x-1.5 md:gap-x-3 gap-y-6 py-8 border-y-2 border-slate-100 dark:border-slate-700 my-6 bg-slate-50/30 dark:bg-slate-900/20 rounded-2xl px-4">
         {parts.map((part, i) => {
           if (!part) return null;
-          
           if (part === "(___)") {
             return (
               <div key={i} className="flex flex-col items-center min-w-[3rem]">
@@ -123,14 +185,12 @@ const ExamView: React.FC<ExamViewProps> = ({ questions, user, grade, onFinish, o
               </div>
             );
           }
-
           const boxMatch = part.match(/\[ (\d) \]/);
           if (boxMatch) {
             const num = boxMatch[1];
             boxCounter++;
             const label = boxCounter === 1 ? 'X' : 'Y';
             const ordinal = num === '1' ? '1st' : num === '2' ? '2nd' : num === '3' ? '3rd' : '4th';
-            
             return (
               <div key={i} className="flex flex-col items-center">
                 <span className="text-[10px] font-black text-indigo-500 dark:text-indigo-400 uppercase mb-1">{ordinal}</span>
@@ -140,9 +200,7 @@ const ExamView: React.FC<ExamViewProps> = ({ questions, user, grade, onFinish, o
               </div>
             );
           }
-          
           if (part.trim() === '') return <div key={i} className="w-2"></div>;
-
           return (
             <span key={i} className="text-xl md:text-2xl font-black text-slate-800 dark:text-slate-200 self-end mb-2 px-1">
               {part}
@@ -165,21 +223,11 @@ const ExamView: React.FC<ExamViewProps> = ({ questions, user, grade, onFinish, o
             <div className="w-20 h-20 bg-amber-50 dark:bg-amber-900/30 text-amber-500 rounded-[1.5rem] flex items-center justify-center mx-auto mb-8 text-3xl shadow-inner">
               <i className="fa-solid fa-arrows-rotate"></i>
             </div>
-            
             <h3 className="text-2xl font-black text-slate-800 dark:text-white text-center mb-2 tracking-tight">Remake Question?</h3>
-            <p className="text-slate-500 dark:text-slate-400 text-center mb-8 text-sm font-bold">
-              リメイク残り: {remakesRemaining}回
-            </p>
-
+            <p className="text-slate-500 dark:text-slate-400 text-center mb-8 text-sm font-bold">リメイク残り: {remakesRemaining}回</p>
             <div className="grid grid-cols-2 gap-4">
               <button onClick={() => setShowRemakeDialog(false)} className="py-4 px-6 bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-200 font-black rounded-2xl transition-all active:scale-95">CANCEL</button>
-              <button 
-                onClick={triggerRemake} 
-                disabled={remakesRemaining <= 0}
-                className="py-4 px-6 bg-indigo-600 hover:bg-indigo-700 text-white font-black rounded-2xl shadow-lg transition-all active:scale-95 disabled:opacity-40 disabled:cursor-not-allowed"
-              >
-                REMAKE
-              </button>
+              <button onClick={triggerRemake} disabled={remakesRemaining <= 0} className="py-4 px-6 bg-indigo-600 hover:bg-indigo-700 text-white font-black rounded-2xl shadow-lg transition-all active:scale-95 disabled:opacity-40 disabled:cursor-not-allowed">REMAKE</button>
             </div>
           </div>
         </div>
@@ -227,22 +275,20 @@ const ExamView: React.FC<ExamViewProps> = ({ questions, user, grade, onFinish, o
                 <p className="text-[10px] font-black text-amber-600 dark:text-amber-400 uppercase tracking-widest mb-2">意味 / Meaning</p>
                 <p className="text-2xl font-black text-slate-800 dark:text-slate-100 leading-snug">{currentQ.text}</p>
               </div>
-              
               <div className="p-8 bg-white dark:bg-slate-700/50 rounded-3xl border-2 border-slate-100 dark:border-slate-600 shadow-sm">
                 <p className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest mb-4">Fragments / 単語リスト</p>
-                <p className="text-2xl font-black text-indigo-600 dark:text-indigo-300 italic tracking-wide font-serif leading-loose">
-                  {currentQ.context}
-                </p>
+                <p className="text-2xl font-black text-indigo-600 dark:text-indigo-300 italic tracking-wide font-serif leading-loose">{currentQ.context}</p>
               </div>
-              
-              {renderSkeleton(currentQ.skeleton || "(___) [ 2 ] (___) [ 4 ] (___)")}
+              {renderOrderingSkeleton(currentQ.skeleton || "(___) [ 2 ] (___) [ 4 ] (___)")}
             </div>
           ) : (
             <div className="animate-fadeIn">
               {currentQ.context && (
-                <div className="mb-8 p-8 bg-slate-50 dark:bg-slate-700/30 rounded-3xl border-2 border-slate-100 dark:border-slate-600 text-xl font-serif leading-relaxed text-slate-700 dark:text-slate-200 italic shadow-inner whitespace-pre-wrap">
-                  {sanitizeText(currentQ.context)}
-                </div>
+                isReading ? renderReadingPassage(currentQ.context) : (
+                  <div className="mb-8 p-8 bg-slate-50 dark:bg-slate-700/30 rounded-3xl border-2 border-slate-100 dark:border-slate-600 text-xl font-serif leading-relaxed text-slate-700 dark:text-slate-200 italic shadow-inner whitespace-pre-wrap">
+                    {sanitizeText(currentQ.context)}
+                  </div>
+                )
               )}
               <div className="text-2xl md:text-3xl font-black text-slate-800 dark:text-white leading-relaxed whitespace-pre-wrap">
                 {sanitizeText(currentQ.text)}
@@ -257,9 +303,7 @@ const ExamView: React.FC<ExamViewProps> = ({ questions, user, grade, onFinish, o
               <div className={`w-10 h-10 min-w-[40px] rounded-full flex items-center justify-center mr-5 font-black text-lg ${answers[currentIdx] === idx ? 'bg-indigo-600 text-white' : 'bg-slate-200 dark:bg-slate-600 text-slate-500'}`}>
                 {idx + 1}
               </div>
-              <span className={`text-xl font-black ${answers[currentIdx] === idx ? 'text-indigo-900 dark:text-indigo-100' : 'text-slate-600 dark:text-slate-300'}`}>
-                {option}
-              </span>
+              <span className={`text-xl font-black ${answers[currentIdx] === idx ? 'text-indigo-900 dark:text-indigo-100' : 'text-slate-600 dark:text-slate-300'}`}>{option}</span>
             </button>
           ))}
         </div>
@@ -268,15 +312,10 @@ const ExamView: React.FC<ExamViewProps> = ({ questions, user, grade, onFinish, o
           <button onClick={handlePrev} disabled={currentIdx === 0} className="px-6 py-3 text-slate-400 font-black disabled:opacity-0 hover:text-indigo-600 transition-colors">
             <i className="fa-solid fa-arrow-left mr-2"></i> PREV
           </button>
-          
           {currentIdx === questions.length - 1 ? (
-            <button onClick={handleFinish} disabled={isNull || answers[currentIdx] === -1} className={`px-12 py-4 rounded-2xl font-black text-xl shadow-2xl transition-all ${answers[currentIdx] === -1 ? 'bg-slate-100 text-slate-400 grayscale' : 'bg-emerald-600 hover:bg-emerald-700 text-white'}`}>
-              FINISH
-            </button>
+            <button onClick={handleFinish} disabled={isNull || answers[currentIdx] === -1} className={`px-12 py-4 rounded-2xl font-black text-xl shadow-2xl transition-all ${answers[currentIdx] === -1 ? 'bg-slate-100 text-slate-400 grayscale' : 'bg-emerald-600 hover:bg-emerald-700 text-white'}`}>FINISH</button>
           ) : (
-            <button onClick={handleNext} disabled={isNull || answers[currentIdx] === -1} className={`px-12 py-4 rounded-2xl font-black text-xl shadow-2xl transition-all ${answers[currentIdx] === -1 ? 'bg-slate-100 text-slate-400' : 'bg-indigo-600 hover:bg-indigo-700 text-white'}`}>
-              NEXT <i className="fa-solid fa-arrow-right ml-2"></i>
-            </button>
+            <button onClick={handleNext} disabled={isNull || answers[currentIdx] === -1} className={`px-12 py-4 rounded-2xl font-black text-xl shadow-2xl transition-all ${answers[currentIdx] === -1 ? 'bg-slate-100 text-slate-400' : 'bg-indigo-600 hover:bg-indigo-700 text-white'}`}>NEXT <i className="fa-solid fa-arrow-right ml-2"></i></button>
           )}
         </div>
       </div>

@@ -206,14 +206,12 @@ const App: React.FC = () => {
     }
 
     if (!isTarget) {
-      // Bypassing 10 test limit for school users
       if (!isSchool && userStats.examsTakenToday >= 10) {
         alert("本日の模擬試験の制限回数（10回）に達しました。明日また挑戦してください！");
         return;
       }
       if (!isSchool) userStats.examsTakenToday += 1;
     } else {
-      // Bypassing 10 test limit for school users
       if (!isSchool && userStats.targetExamsTakenToday >= 10) {
         alert("本日のスキル練習の制限回数（10回）に達しました。明日また挑戦してください！");
         return;
@@ -221,6 +219,8 @@ const App: React.FC = () => {
       if (!isSchool) userStats.targetExamsTakenToday += 1;
     }
 
+    // Temporarily track state
+    const originalUser = { ...user };
     const updatedUser = { ...user, stats: userStats };
     setUser(updatedUser);
     localStorage.setItem('eiken_user', JSON.stringify(updatedUser));
@@ -248,8 +248,16 @@ const App: React.FC = () => {
       setView('exam');
     } catch (err: any) {
       console.error("EXAM_START_ERROR:", err);
-      const errorMessage = err.message || "Unknown error / 不明なエラー";
-      alert(`GENERATION FAILED / 生成失敗:\n\n${errorMessage}\n\nGoogle CloudのGenerative Language APIが有効になっているか、APIキーが正しいか確認してください。`);
+      // Revert credits/stats locally if it failed due to overload/error
+      setUser(originalUser);
+      localStorage.setItem('eiken_user', JSON.stringify(originalUser));
+      
+      const isOverload = err.message?.includes("busy") || err.message?.includes("overloaded");
+      const errorMessage = isOverload 
+        ? "AI is currently busy. Please wait 1-2 minutes and try again.\nAIが混み合っています。1～2分ほど待ってからもう一度お試しください。"
+        : err.message || "Unknown error / 不明なエラー";
+      
+      alert(errorMessage);
       setView('dashboard');
     }
   };
@@ -276,9 +284,11 @@ const App: React.FC = () => {
       setUser(updatedUser);
       localStorage.setItem('eiken_user', JSON.stringify(updatedUser));
       syncUserToGas(updatedUser, 'updateStats');
-    } catch (err) {
+    } catch (err: any) {
       console.error("REMAKE_ERROR:", err);
-      alert("問題の再生成に失敗しました。APIの設定を確認してください。");
+      const isOverload = err.message?.includes("busy") || err.message?.includes("overloaded");
+      const msg = isOverload ? "AI is busy. Please try remaking in a moment." : "Failed to remake question.";
+      alert(msg);
     }
   };
 
