@@ -2,211 +2,161 @@
 import { GoogleGenAI, Type } from "@google/genai";
 import { Question, TargetSection, EikenGrade, QuestionType } from "../types";
 
-const AUTHENTIC_THEMES = [
-  "Weather and seasons", "Feelings and physical conditions", "Hobbies and club activities",
-  "School life and classroom scenes", "Daily life and routines", "Family and friends",
-  "Travel and transportation", "Shopping and department stores", "Nature and animals",
-  "Food and cooking", "Health and visiting the doctor", "Technology and the internet",
-  "Sports and exercise", "City life and directions", "Occupations and future dreams",
-  "Special events and holidays"
-];
+const EIKEN_4_GRAMMAR_FORMULA = `
+STRICTLY cycle through these specific syntactic structures:
+1. Verb + To-Infinitive: want to / like to / started to / need to
+2. Verb + Gerund: enjoy ~ing / finished ~ing / stopped ~ing
+3. Time/Reason Clauses: When I was... / because it was...
+4. Comparisons: as [adj] as / [adj]-er than / the most [adj]
+5. Conjunctions/Prepositions: before going to bed / after school / by bus
+6. Question Forms: What time... / How many... / Where did you...
+7. Common Phrasal Verbs: look for / look at / get up / listen to
+`;
 
-const GRADE_4_PART_2_PROMPT = `Section 2: Conversations (Questions 16–20)
-Instructions: Create dialogue items. Use A-B format (2 lines) or A-B-A format (3 lines).
-CRITICAL: Speaker A and Speaker B must ALWAYS be separated by a literal newline character (\\n). 
-DO NOT USE HTML TAGS.
-Choices must be complete sentences or standard phrases. All blanks MUST be exactly "(___)".`;
+const GRADE_4_PART_2_PROMPT = `
+Section 2: Conversations (Questions 16–20)
+Scenario Logic: Use "Adjacency Pairs."
+- Item 1: Wh- question regarding frequency (How often/How many).
+- Item 2: Social reaction to bad news/problem (I'm sorry to hear that / That's too bad).
+- Item 3: Suggestion and counter-offer (Why don't we... / How about...?).
+- Item 4: Asking for permission or help (May I... / Can you...?).
+- Item 5: Clarification of location or time (Which bus... / What time...).
+FORMAT: Speaker A and Speaker B must ALWAYS be separated by a literal newline character (\\n). 
+Example: "A: Can you help me?\\nB: Sure, what's the problem?"
+All blanks MUST be exactly "(___)".
+`;
 
-const GRADE_4_PART_3_PROMPT = `Section 3: Sentence Rearranging (Questions 21–25)
-Instructions: Provide a Japanese meaning, EXACTLY 5 scrambled fragments (as 'context'), and a 5-slot skeleton.
-CRITICAL RULE: Grade 4 Part 3 ALWAYS asks for the combination of the 2nd and 4th words.
-1. 'skeleton' MUST contain exactly 5 blanks/boxes: "(___) [ 2 ] (___) [ 4 ] (___)".
-2. 'options' MUST be 4 strings of hyphenated pairs (IDs 1-5), e.g., "3-5".
-3. 'correctAnswer' MUST be the 0-based index.`;
+const GRADE_4_PART_3_PROMPT = `
+Section 3: Sentence Rearranging (Questions 21–25)
+Target Q21: To-infinitive (e.g., decided to study).
+Target Q22: Time Clause (e.g., When I went to...).
+Target Q23: Phrasal Verb (e.g., looking for my...).
+Target Q24: Comparison (e.g., more interesting than...).
+Target Q25: Gerund (e.g., finished cleaning the...).
+Skeleton MUST be: "(___) [ 2 ] (___) [ 4 ] (___)".
+Options MUST be hyphenated pairs of IDs (e.g., "3-5").
+Provide a Japanese meaning.
+`;
 
-const GRADE_5_PART_3_PROMPT = `Section 3: Sentence Rearranging (Questions 21–25)
-Instructions: Provide a Japanese meaning, EXACTLY 4 scrambled fragments (as 'context'), and a 4-slot skeleton.
-CRITICAL RULE: Grade 5 Part 3 ALWAYS asks for the combination of the 1st and 3rd words.
-1. 'skeleton' MUST contain exactly 4 blanks/boxes: "[ 1 ] (___) [ 3 ] (___)". 
-2. 'options' MUST be 4 strings of hyphenated pairs (IDs 1-4), e.g., "1-3".`;
+const GRADE_4_PART_4_PROMPT = `
+Section 4: Reading Comprehension (Q26–35)
+STRICT DIVERSITY RULE: Avoid generic scenarios. Rotate themes: environment, technology, local history, unusual hobbies, volunteering, and diverse cultural exchanges.
 
-const GRADE_4_PART_4_PROMPT = `Section 4: Reading Comprehension (Questions 26–35)
-General Rules: Use [TITLE] for all passages. Use \\n for line breaks.
+Part 4A (Q26-27 - Notice/Flyer): 
+- Create a Volunteer Flyer or Special Club Announcement (e.g., "Stargazing Club" or "Beach Clean-up"). Include specific "Rules" or "Requirements".
+- Format: Use [TITLE] for header. Use Date:, Time:, Place:, Price: labels. Use --- for horizontal lines.
 
-Part 4B (Q28–30 - Email Exchange): 
-- Format: A 3-paragraph email with headers (From:/To:/Subject:). 
-- Theme: A student's personal message to a host family or friend about a specific event, achievement, or interesting local detail (e.g. learning a skill, a successful project, a trip).
-- Content: MUST answer specific questions (e.g. "You asked about my...", "To answer your question...") to simulate a real reply. Avoid generic fillers.
+Part 4B (Q28–30 - Email): 
+- A 3-paragraph email exchange between a student and host family/pen-pal about a specific local problem or success (e.g., "I finally learned how to make sushi" or "Our school garden grew 50 tomatoes").
+- Headers: From:, To:, Subject:.
 
-Part 4C (Q31–35 - Narrative):
-- Title: "A Small Achievement" (REQUIRED TITLE).
-- Length: Approx 180 words.
-- Paragraph 1 (Motivation): Introduce a character and why they decided to start a new activity or project.
-- Paragraph 2 (Process): Describe the specific actions taken and hurdles overcome using past tense.
-- Paragraph 3 (Result): Describe the outcome and what the character felt or learned.
-- Be creative with varied character names and scenarios.`;
+Part 4C (Q31–35 - Narrative): 
+- 180-word story. Theme: "A Small Achievement". Character tries something new (e.g., birdwatching, baking, volunteering).
+- Para 1: Motivation (Why start). Para 2: Process (Past tense). Para 3: Result & Reflection.
+
+Formatting: Always use \\n for line breaks. Questions sharing the same passage MUST have the EXACT SAME 'context' string.
+`;
 
 const SECTION_DEFS: Record<TargetSection, string> = {
-  PART_1: `Section 1. Vocabulary and Grammar. Short conversations or single sentences. Focus on daily life. All blanks MUST be "(___)". DO NOT USE HTML.`,
+  PART_1: `Section 1. Vocab & Grammar. ${EIKEN_4_GRAMMAR_FORMULA} Variety: City, School, Nature, Health, Tech. Blanks: (___).`,
   PART_2: GRADE_4_PART_2_PROMPT,
-  PART_3: "DYNAMIC_PROMPT", 
+  PART_3: GRADE_4_PART_3_PROMPT,
   PART_4: GRADE_4_PART_4_PROMPT
-};
-
-const GRADE_CONFIGS: Partial<Record<EikenGrade, any>> = {
-  'GRADE_5': { counts: { PART_1: 15, PART_2: 5, PART_3: 5 } },
-  'GRADE_4': { counts: { PART_1: 15, PART_2: 5, PART_3: 5, PART_4: 10 } }
-};
-
-const TYPE_MAPPINGS: Record<TargetSection, QuestionType> = {
-  PART_1: QuestionType.VOCABULARY,
-  PART_2: QuestionType.DIALOGUE,
-  PART_3: QuestionType.SENTENCE_ORDER,
-  PART_4: QuestionType.READING_COMPREHENSION
 };
 
 const questionSchema = {
   type: Type.OBJECT,
   properties: {
     type: { type: Type.STRING },
-    context: { type: Type.STRING, description: "Passage or fragments list." },
-    text: { type: Type.STRING, description: "Question text or meaning. Blanks: (___)." },
-    skeleton: { type: Type.STRING, description: "Sentence with boxes like [ 2 ]. Only for Part 3." },
-    options: { type: Type.ARRAY, items: { type: Type.STRING }, description: "4 choices." },
-    correctAnswer: { type: Type.INTEGER, description: "0-based index." },
-    explanation: { type: Type.STRING, description: "Japanese explanation." },
+    context: { type: Type.STRING, description: "Passage, Flyer, or fragments. Use \\n for breaks." },
+    text: { type: Type.STRING, description: "Question text or Speaker Dialogue. Blanks: (___). Use \\n for speaker breaks." },
+    skeleton: { type: Type.STRING },
+    options: { type: Type.ARRAY, items: { type: Type.STRING } },
+    correctAnswer: { type: Type.INTEGER },
+    explanation: { type: Type.STRING },
     category: { type: Type.STRING }
   },
-  required: ["type", "text", "options", "correctAnswer", "explanation"],
-  propertyOrdering: ["type", "context", "text", "skeleton", "options", "correctAnswer", "explanation", "category"]
+  required: ["type", "text", "options", "correctAnswer", "explanation"]
 };
 
 function extractJson(text: string | undefined): any {
-  if (!text) throw new Error("AI returned empty response.");
+  if (!text) throw new Error("Empty AI response.");
   try {
     let cleaned = text.trim();
-    if (cleaned.startsWith('```')) {
-      cleaned = cleaned.replace(/^```[a-z]*\n/i, '').replace(/\n```$/i, '');
-    }
+    if (cleaned.startsWith('```')) cleaned = cleaned.replace(/^```[a-z]*\n/i, '').replace(/\n```$/i, '');
     const start = cleaned.indexOf('[');
     const end = cleaned.lastIndexOf(']');
     if (start !== -1 && end !== -1) return JSON.parse(cleaned.substring(start, end + 1));
-    const objStart = cleaned.indexOf('{');
-    const objEnd = cleaned.lastIndexOf('}');
-    if (objStart !== -1 && objEnd !== -1) return JSON.parse(cleaned.substring(objStart, objEnd + 1));
     return JSON.parse(cleaned);
   } catch (e) {
-    throw new Error("AI output was not in valid JSON format. Try again.");
+    throw new Error("Invalid JSON format from AI.");
   }
-}
-
-function getValidApiKey(): string {
-  const key = (window as any).process?.env?.API_KEY || (globalThis as any).process?.env?.API_KEY || (import.meta as any).env?.VITE_API_KEY || "";
-  const cleanedKey = String(key).trim();
-  
-  if (cleanedKey.length > 0) {
-    console.log(`[Gemini Auth] Key found (Length: ${cleanedKey.length}). Starts with: ${cleanedKey.substring(0, 4)}...`);
-  } else {
-    console.warn("[Gemini Auth] API Key is empty! Please check VITE_API_KEY.");
-  }
-
-  if (!cleanedKey || cleanedKey === "undefined" || cleanedKey === "null" || cleanedKey.length < 10) {
-    throw new Error("Missing API Key. Ensure VITE_API_KEY is set.");
-  }
-  return cleanedKey;
-}
-
-async function retryWithBackoff<T>(fn: () => Promise<T>, maxRetries = 3): Promise<T> {
-  let delay = 2000;
-  for (let i = 0; i < maxRetries; i++) {
-    try {
-      return await fn();
-    } catch (error: any) {
-      const isOverloaded = error.message?.includes("503") || error.message?.includes("overloaded");
-      const isRateLimited = error.message?.includes("429");
-      
-      if ((isOverloaded || isRateLimited) && i < maxRetries - 1) {
-        console.warn(`[Gemini] Model busy. Retrying in ${delay}ms... (Attempt ${i + 1}/${maxRetries})`);
-        await new Promise(resolve => setTimeout(resolve, delay));
-        delay *= 2; 
-        continue;
-      }
-      throw error;
-    }
-  }
-  throw new Error("Max retries exceeded");
 }
 
 export async function* streamQuestions(grade: EikenGrade, section: TargetSection, theme?: string): AsyncGenerator<Question> {
-  const apiKey = getValidApiKey();
-  const config = GRADE_CONFIGS[grade] || GRADE_CONFIGS['GRADE_4']!;
-  const count = config.counts[section] || 5;
-  
-  let sectionPrompt = SECTION_DEFS[section];
-  if (section === 'PART_3') {
-    sectionPrompt = grade === 'GRADE_5' ? GRADE_5_PART_3_PROMPT : GRADE_4_PART_3_PROMPT;
-  }
-  
-  const targetType = TYPE_MAPPINGS[section];
-  const themeInjection = theme ? `THEME: "${theme}".` : `VARIETY: Authentic Eiken themes.`;
-
-  const prompt = `Generate exactly ${count} Eiken ${grade.replace('_', ' ')} questions for ${section}. ${sectionPrompt} ${themeInjection} Return JSON array. All 'explanation' in Japanese. NO HTML.`;
-
+  const apiKey = process.env.API_KEY || "";
   const ai = new GoogleGenAI({ apiKey });
   
+  const sectionPrompt = SECTION_DEFS[section];
+  const count = (grade === 'GRADE_4' && section === 'PART_4') ? 10 : 5;
+  const themeInjection = theme ? `THEME FOCUS: "${theme}".` : `VARIETY: Rotate between diverse authentic Eiken themes.`;
+
+  const prompt = `Role: Senior test designer for Eiken ${grade.replace('_', ' ')}. Task: Generate ${count} questions for ${section}. 
+  ${sectionPrompt}
+  ${themeInjection}
+  Return a JSON array. All 'explanation' in Japanese. NO HTML. Use \\n for formatting.`;
+
   try {
-    const response = await retryWithBackoff(() => ai.models.generateContent({
+    const response = await ai.models.generateContent({
       model: 'gemini-3-flash-preview',
       contents: prompt,
       config: {
         responseMimeType: "application/json",
         responseSchema: { type: Type.ARRAY, items: questionSchema } as any,
-        temperature: 0.8,
+        temperature: 0.85,
       },
-    }));
+    });
+
+    if (!response.text) {
+       throw new Error("No text content returned from Gemini.");
+    }
 
     const questions: any[] = extractJson(response.text);
+    const typeMapping = {
+      PART_1: QuestionType.VOCABULARY,
+      PART_2: QuestionType.DIALOGUE,
+      PART_3: QuestionType.SENTENCE_ORDER,
+      PART_4: QuestionType.READING_COMPREHENSION
+    };
+
     for (const q of questions) {
-      yield { ...q, id: Math.random(), category: section, type: targetType };
+      yield { ...q, id: Math.random(), category: section, type: typeMapping[section] };
     }
   } catch (error: any) {
-    console.error("GEMINI_API_ERROR:", error);
-    if (error.message?.includes("400") || error.message?.includes("API key not valid")) {
-      throw new Error("Google API Key Error: Please go to Google Cloud Console and enable the 'Generative Language API'.");
+    console.error("Gemini Error:", error);
+    // Return a structured error string that includes the reason code
+    let message = error?.message || "Unknown API Error";
+    if (typeof error === 'object' && error !== null) {
+      try {
+        message = JSON.stringify(error);
+      } catch (e) {}
     }
-    if (error.message?.includes("503") || error.message?.includes("overloaded")) {
-      throw new Error("AI is currently busy / AIが混み合っています。少し時間をおいてからもう一度お試しください。");
-    }
-    throw error;
+    throw new Error(message);
   }
 }
 
 export async function remakeQuestion(grade: EikenGrade, original: Question): Promise<Question> {
-  const apiKey = getValidApiKey();
-  const ai = new GoogleGenAI({ apiKey });
+  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY || "" });
   const section = original.category as TargetSection;
-  const targetType = TYPE_MAPPINGS[section] || original.type;
-
-  let sectionPrompt = SECTION_DEFS[section] || SECTION_DEFS['PART_1'];
-  if (section === 'PART_3') {
-    sectionPrompt = grade === 'GRADE_5' ? GRADE_5_PART_3_PROMPT : GRADE_4_PART_3_PROMPT;
-  }
-  
-  const prompt = `Generate ONE new Eiken ${grade.replace('_', ' ')} question for ${section}. ${sectionPrompt} Return as JSON object. NO HTML.`;
-
-  try {
-    const response = await retryWithBackoff(() => ai.models.generateContent({
-      model: 'gemini-3-flash-preview',
-      contents: prompt,
-      config: {
-        responseMimeType: "application/json",
-        responseSchema: questionSchema as any,
-        temperature: 1.0,
-      },
-    }));
-    const newQ = extractJson(response.text);
-    return { ...newQ, id: original.id, category: original.category, type: targetType };
-  } catch (error: any) {
-    throw error;
-  }
+  const prompt = `Generate ONE new Eiken ${grade} ${section} question. ${SECTION_DEFS[section] || ''} Return JSON.`;
+  const response = await ai.models.generateContent({
+    model: 'gemini-3-flash-preview',
+    contents: prompt,
+    config: {
+      responseMimeType: "application/json",
+      responseSchema: questionSchema as any,
+    },
+  });
+  const newQ = extractJson(response.text);
+  return { ...newQ, id: original.id, category: original.category, type: original.type };
 }

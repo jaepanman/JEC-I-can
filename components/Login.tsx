@@ -37,6 +37,7 @@ const Login: React.FC<LoginProps> = ({ onLogin }) => {
   const [barcodeNumber, setBarcodeNumber] = useState('');
 
   const handleDebugLogin = () => {
+    // Fixed: stats initialization to match UserStats interface
     onLogin({
       id: `debug_${Date.now()}`,
       name: 'Debug User',
@@ -49,9 +50,11 @@ const Login: React.FC<LoginProps> = ({ onLogin }) => {
         totalQuestionsAnswered: 0, 
         streakCount: 0, 
         lastStudyTimestamp: 0, 
-        remakeUsed: false, 
+        remakeCountToday: 0,
+        lastRemakeDate: new Date().toISOString().split('T')[0],
         targetCompletions: { PART_1: 0, PART_2: 0, PART_3: 0, PART_4: 0 },
         examsTakenToday: 0,
+        targetExamsTakenToday: 0,
         lastExamDate: new Date().toISOString().split('T')[0]
       },
       pin: '0000'
@@ -94,6 +97,7 @@ const Login: React.FC<LoginProps> = ({ onLogin }) => {
         }
         const hashedPassword = await hashPassword(password);
         action = 'register';
+        // Fixed: stats initialization to match UserStats interface
         body = { 
           user: {
             name: studentName,
@@ -109,9 +113,11 @@ const Login: React.FC<LoginProps> = ({ onLogin }) => {
               totalQuestionsAnswered: 0, 
               streakCount: 0, 
               lastStudyTimestamp: 0, 
-              remakeUsed: false, 
+              remakeCountToday: 0,
+              lastRemakeDate: new Date().toISOString().split('T')[0],
               targetCompletions: { PART_1: 0, PART_2: 0, PART_3: 0, PART_4: 0 },
               examsTakenToday: 0,
+              targetExamsTakenToday: 0,
               lastExamDate: new Date().toISOString().split('T')[0]
             }
           }
