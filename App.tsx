@@ -186,7 +186,9 @@ const App: React.FC = () => {
   const startExamFlow = async (isTarget: boolean, section?: TargetSection, theme?: string) => {
     if (!selectedGrade || !user) return;
     const cost = isTarget ? 0.2 : 1.0;
-    if (!user.id.startsWith('debug') && !user.id.startsWith('school') && !user.hasSubscription && user.credits < cost) {
+    const isSchool = user.id.startsWith('school');
+
+    if (!user.id.startsWith('debug') && !isSchool && !user.hasSubscription && user.credits < cost) {
       alert("チケットが不足しています。");
       return;
     }
@@ -204,17 +206,19 @@ const App: React.FC = () => {
     }
 
     if (!isTarget) {
-      if (userStats.examsTakenToday >= 10) {
+      // Bypassing 10 test limit for school users
+      if (!isSchool && userStats.examsTakenToday >= 10) {
         alert("本日の模擬試験の制限回数（10回）に達しました。明日また挑戦してください！");
         return;
       }
-      userStats.examsTakenToday += 1;
+      if (!isSchool) userStats.examsTakenToday += 1;
     } else {
-      if (userStats.targetExamsTakenToday >= 10) {
+      // Bypassing 10 test limit for school users
+      if (!isSchool && userStats.targetExamsTakenToday >= 10) {
         alert("本日のスキル練習の制限回数（10回）に達しました。明日また挑戦してください！");
         return;
       }
-      userStats.targetExamsTakenToday += 1;
+      if (!isSchool) userStats.targetExamsTakenToday += 1;
     }
 
     const updatedUser = { ...user, stats: userStats };
@@ -235,7 +239,7 @@ const App: React.FC = () => {
           setCurrentExam([...generated]);
         }
       }
-      if (!user.id.startsWith('debug') && !user.id.startsWith('school') && !user.hasSubscription) {
+      if (!user.id.startsWith('debug') && !isSchool && !user.hasSubscription) {
         const finalUser = { ...updatedUser, credits: Math.max(0, Math.round((updatedUser.credits - cost) * 10) / 10) };
         setUser(finalUser);
         localStorage.setItem('eiken_user', JSON.stringify(finalUser));
@@ -244,7 +248,6 @@ const App: React.FC = () => {
       setView('exam');
     } catch (err: any) {
       console.error("EXAM_START_ERROR:", err);
-      // Enhanced error message for user
       const errorMessage = err.message || "Unknown error / 不明なエラー";
       alert(`GENERATION FAILED / 生成失敗:\n\n${errorMessage}\n\nGoogle CloudのGenerative Language APIが有効になっているか、APIキーが正しいか確認してください。`);
       setView('dashboard');
@@ -458,12 +461,12 @@ const App: React.FC = () => {
           <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm" onClick={() => setPendingPurchase(null)}></div>
           <div className="relative w-full max-w-2xl bg-black/95 text-white p-8 md:p-12 shadow-2xl rounded-b-[3rem] animate-fadeIn border-b-4 border-indigo-500 overflow-y-auto max-h-[95vh]">
             <div className="flex flex-col md:flex-row items-start md:space-x-6">
-              <div className="hidden md:flex w-16 h-16 bg-indigo-500/20 rounded-2xl items-center justify-center text-3xl text-indigo-400 shrink-0 mb-4 md:mb-0"><i className="fa-solid fa-lock"></i></div>
+              <div className="hidden md:flex w-16 h-16 bg-indigo-50/20 rounded-2xl items-center justify-center text-3xl text-indigo-400 shrink-0 mb-4 md:mb-0"><i className="fa-solid fa-lock"></i></div>
               <div className="flex-1 w-full">
                 <h2 className="text-2xl font-black mb-4 tracking-tight flex items-center"><i className="fa-solid fa-shield-check mr-3 text-indigo-500"></i>Parental Verification</h2>
                 <div className="bg-white/5 p-6 rounded-2xl border border-white/10 mb-8"><p className="text-sm font-bold leading-relaxed whitespace-pre-wrap text-slate-200">{pendingPurchase.message}</p></div>
                 <form onSubmit={handleVerificationAndPurchase} className="space-y-4">
-                  {verifyError && <div className="p-4 bg-rose-500/20 text-rose-300 rounded-xl text-xs font-bold border border-rose-500/30 animate-shake">{verifyError}</div>}
+                  {verifyError && <div className="p-4 bg-rose-50/20 text-rose-300 rounded-xl text-xs font-bold border border-rose-500/30 animate-shake">{verifyError}</div>}
                   <div className="space-y-4">
                     <div><label className="block text-[10px] font-black uppercase text-slate-400 mb-1 ml-1">Parent Email</label><input type="email" className="w-full px-6 py-4 bg-white/5 border-2 border-white/10 rounded-2xl outline-none focus:border-indigo-500 text-white" value={verifyEmail} onChange={e => setVerifyEmail(e.target.value)} required /></div>
                     <div><label className="block text-[10px] font-black uppercase text-slate-400 mb-1 ml-1">Password</label><input type="password" className="w-full px-6 py-4 bg-white/5 border-2 border-white/10 rounded-2xl outline-none focus:border-indigo-500 text-white" value={verifyPassword} onChange={e => setVerifyPassword(e.target.value)} required /></div>

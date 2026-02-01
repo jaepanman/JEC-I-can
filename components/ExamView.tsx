@@ -97,8 +97,15 @@ const ExamView: React.FC<ExamViewProps> = ({ questions, user, grade, onFinish, o
   const currentQ = questions[currentIdx];
   const progress = ((currentIdx + 1) / questions.length) * 100;
   
-  const isOrdering = currentQ?.type === QuestionType.SENTENCE_ORDER || (currentQ?.skeleton && currentQ.skeleton.includes('['));
+  // Refined: Strictly use QuestionType to determine if it's an ordering question
+  const isOrdering = currentQ?.type === QuestionType.SENTENCE_ORDER;
   const isNull = currentQ?.text === 'null' || !currentQ || !currentQ.text;
+
+  // Sanitize AI hallucinations like <br> tags
+  const sanitizeText = (text: string) => {
+    if (!text) return "";
+    return text.replace(/<br\s*\/?>/gi, '\n');
+  };
 
   const renderSkeleton = (skeleton: string) => {
     const parts = skeleton.split(/(\(___\)|\[ \d \])/);
@@ -134,7 +141,6 @@ const ExamView: React.FC<ExamViewProps> = ({ questions, user, grade, onFinish, o
             );
           }
           
-          // Regular text (fixed words)
           if (part.trim() === '') return <div key={i} className="w-2"></div>;
 
           return (
@@ -235,11 +241,11 @@ const ExamView: React.FC<ExamViewProps> = ({ questions, user, grade, onFinish, o
             <div className="animate-fadeIn">
               {currentQ.context && (
                 <div className="mb-8 p-8 bg-slate-50 dark:bg-slate-700/30 rounded-3xl border-2 border-slate-100 dark:border-slate-600 text-xl font-serif leading-relaxed text-slate-700 dark:text-slate-200 italic shadow-inner whitespace-pre-wrap">
-                  {currentQ.context}
+                  {sanitizeText(currentQ.context)}
                 </div>
               )}
               <div className="text-2xl md:text-3xl font-black text-slate-800 dark:text-white leading-relaxed whitespace-pre-wrap">
-                {currentQ.text}
+                {sanitizeText(currentQ.text)}
               </div>
             </div>
           )}

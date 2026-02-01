@@ -13,7 +13,8 @@ const AUTHENTIC_THEMES = [
 
 const GRADE_4_PART_2_PROMPT = `Section 2: Conversations (Questions 16–20)
 Instructions: Create dialogue items. Use A-B format (2 lines) or A-B-A format (3 lines).
-CRITICAL: Speaker A and Speaker B must ALWAYS be separated by a line break (\n). 
+CRITICAL: Speaker A and Speaker B must ALWAYS be separated by a literal newline character (\\n). 
+DO NOT USE HTML TAGS LIKE <br>. Use plain text.
 Choices must be complete sentences or standard phrases. All blanks MUST be exactly "(___)".`;
 
 const GRADE_4_PART_3_PROMPT = `Section 3: Sentence Rearranging (Questions 21–25)
@@ -33,10 +34,11 @@ const GRADE_4_PART_4_PROMPT = `Section 4: Reading Comprehension (Questions 26–
 Format passages like professional flyers, emails, or stories using clear headers and \\n for layout.
 Flyer: [TITLE], dashed dividers, bullet points.
 Email: From/To/Subject headers, formal greeting.
-Story: [TITLE], paragraphs.`;
+Story: [TITLE], paragraphs.
+DO NOT USE HTML TAGS. Use plain text and newlines.`;
 
 const SECTION_DEFS: Record<TargetSection, string> = {
-  PART_1: `Section 1. Vocabulary and Grammar. Short conversations or single sentences. Focus on daily life. All blanks MUST be "(___)".`,
+  PART_1: `Section 1. Vocabulary and Grammar. Short conversations or single sentences. Focus on daily life. All blanks MUST be "(___)". DO NOT USE HTML.`,
   PART_2: GRADE_4_PART_2_PROMPT,
   PART_3: "DYNAMIC_PROMPT", 
   PART_4: GRADE_4_PART_4_PROMPT
@@ -60,7 +62,7 @@ const questionSchema = {
     type: { type: Type.STRING },
     context: { type: Type.STRING, description: "Passage or fragments list." },
     text: { type: Type.STRING, description: "Question text or meaning. Blanks: (___)." },
-    skeleton: { type: Type.STRING, description: "Sentence with boxes like [ 2 ]." },
+    skeleton: { type: Type.STRING, description: "Sentence with boxes like [ 2 ]. Only for Part 3." },
     options: { type: Type.ARRAY, items: { type: Type.STRING }, description: "4 choices." },
     correctAnswer: { type: Type.INTEGER, description: "0-based index." },
     explanation: { type: Type.STRING, description: "Japanese explanation." },
@@ -93,7 +95,6 @@ function getValidApiKey(): string {
   const key = (window as any).process?.env?.API_KEY || (globalThis as any).process?.env?.API_KEY || (import.meta as any).env?.VITE_API_KEY || "";
   const cleanedKey = String(key).trim();
   
-  // Safe Debugging
   if (cleanedKey.length > 0) {
     console.log(`[Gemini Auth] Key found (Length: ${cleanedKey.length}). Starts with: ${cleanedKey.substring(0, 4)}...`);
   } else {
@@ -119,7 +120,7 @@ export async function* streamQuestions(grade: EikenGrade, section: TargetSection
   const targetType = TYPE_MAPPINGS[section];
   const themeInjection = theme ? `THEME: "${theme}".` : `VARIETY: Authentic Eiken themes.`;
 
-  const prompt = `Generate exactly ${count} Eiken ${grade.replace('_', ' ')} questions for ${section}. ${sectionPrompt} ${themeInjection} Return JSON array. All 'explanation' in Japanese.`;
+  const prompt = `Generate exactly ${count} Eiken ${grade.replace('_', ' ')} questions for ${section}. ${sectionPrompt} ${themeInjection} Return JSON array. All 'explanation' in Japanese. NO HTML.`;
 
   const ai = new GoogleGenAI({ apiKey });
   
@@ -158,7 +159,7 @@ export async function remakeQuestion(grade: EikenGrade, original: Question): Pro
     sectionPrompt = grade === 'GRADE_5' ? GRADE_5_PART_3_PROMPT : GRADE_4_PART_3_PROMPT;
   }
   
-  const prompt = `Generate ONE new Eiken ${grade.replace('_', ' ')} question for ${section}. ${sectionPrompt} Return as JSON object.`;
+  const prompt = `Generate ONE new Eiken ${grade.replace('_', ' ')} question for ${section}. ${sectionPrompt} Return as JSON object. NO HTML.`;
 
   try {
     const response = await ai.models.generateContent({
