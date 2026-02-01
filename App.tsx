@@ -220,8 +220,6 @@ const App: React.FC = () => {
     const updatedUser = { ...user, stats: userStats };
     setUser(updatedUser);
     localStorage.setItem('eiken_user', JSON.stringify(updatedUser));
-    
-    // Non-blocking sync
     syncUserToGas(updatedUser, 'updateStats');
 
     setView('generating');
@@ -244,9 +242,11 @@ const App: React.FC = () => {
         syncUserToGas(finalUser, 'updateStats');
       }
       setView('exam');
-    } catch (err) {
+    } catch (err: any) {
       console.error("EXAM_START_ERROR:", err);
-      alert("Failed to generate questions. Please check your internet and API Key. / 問題の生成に失敗しました。設定を確認してください。");
+      // Enhanced error message for user
+      const errorMessage = err.message || "Unknown error / 不明なエラー";
+      alert(`GENERATION FAILED / 生成失敗:\n\n${errorMessage}\n\nGoogle CloudのGenerative Language APIが有効になっているか、APIキーが正しいか確認してください。`);
       setView('dashboard');
     }
   };
@@ -275,7 +275,7 @@ const App: React.FC = () => {
       syncUserToGas(updatedUser, 'updateStats');
     } catch (err) {
       console.error("REMAKE_ERROR:", err);
-      alert("問題の再生成に失敗しました。");
+      alert("問題の再生成に失敗しました。APIの設定を確認してください。");
     }
   };
 

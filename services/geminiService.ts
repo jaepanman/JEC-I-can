@@ -73,29 +73,41 @@ const questionSchema = {
 function extractJson(text: string | undefined): any {
   if (!text) throw new Error("AI returned empty response.");
   try {
-    const trimmed = text.trim();
-    const start = trimmed.indexOf('[');
-    const end = trimmed.lastIndexOf(']');
-    if (start !== -1 && end !== -1) return JSON.parse(trimmed.substring(start, end + 1));
-    
-    const objStart = trimmed.indexOf('{');
-    const objEnd = trimmed.lastIndexOf('}');
-    if (objStart !== -1 && objEnd !== -1) return JSON.parse(trimmed.substring(objStart, objEnd + 1));
-    
-    return JSON.parse(trimmed);
+    let cleaned = text.trim();
+    if (cleaned.startsWith('```')) {
+      cleaned = cleaned.replace(/^```[a-z]*\n/i, '').replace(/\n```$/i, '');
+    }
+    const start = cleaned.indexOf('[');
+    const end = cleaned.lastIndexOf(']');
+    if (start !== -1 && end !== -1) return JSON.parse(cleaned.substring(start, end + 1));
+    const objStart = cleaned.indexOf('{');
+    const objEnd = cleaned.lastIndexOf('}');
+    if (objStart !== -1 && objEnd !== -1) return JSON.parse(cleaned.substring(objStart, objEnd + 1));
+    return JSON.parse(cleaned);
   } catch (e) {
-    console.error("JSON Error. Raw text:", text);
-    throw new Error("Invalid response format.");
+    throw new Error("AI output was not in valid JSON format. Try again.");
   }
 }
 
-export async function* streamQuestions(grade: EikenGrade, section: TargetSection, theme?: string): AsyncGenerator<Question> {
-  const apiKey = process.env.API_KEY;
-  if (!apiKey || apiKey.length < 5) {
-    console.error("API_KEY is missing in process.env. Current process.env:", process.env);
-    throw new Error("Missing Gemini API Key. Please set VITE_API_KEY.");
+function getValidApiKey(): string {
+  const key = (window as any).process?.env?.API_KEY || (globalThis as any).process?.env?.API_KEY || (import.meta as any).env?.VITE_API_KEY || "";
+  const cleanedKey = String(key).trim();
+  
+  // Safe Debugging
+  if (cleanedKey.length > 0) {
+    console.log(`[Gemini Auth] Key found (Length: ${cleanedKey.length}). Starts with: ${cleanedKey.substring(0, 4)}...`);
+  } else {
+    console.warn("[Gemini Auth] API Key is empty! Please check VITE_API_KEY in Vercel.");
   }
 
+  if (!cleanedKey || cleanedKey === "undefined" || cleanedKey === "null" || cleanedKey.length < 10) {
+    throw new Error("Missing API Key. Ensure VITE_API_KEY is set in Vercel.");
+  }
+  return cleanedKey;
+}
+
+export async function* streamQuestions(grade: EikenGrade, section: TargetSection, theme?: string): AsyncGenerator<Question> {
+  const apiKey = getValidApiKey();
   const config = GRADE_CONFIGS[grade] || GRADE_CONFIGS['GRADE_4']!;
   const count = config.counts[section] || 5;
   
@@ -105,14 +117,9 @@ export async function* streamQuestions(grade: EikenGrade, section: TargetSection
   }
   
   const targetType = TYPE_MAPPINGS[section];
-  const themeInjection = theme 
-    ? `THEME: "${theme}".` 
-    : `VARIETY: Use themes like ${AUTHENTIC_THEMES.slice(0, 3).join(', ')}.`;
+  const themeInjection = theme ? `THEME: "${theme}".` : `VARIETY: Authentic Eiken themes.`;
 
-  const prompt = `Generate exactly ${count} Eiken ${grade.replace('_', ' ')} questions for ${section}.
-    ${sectionPrompt}
-    ${themeInjection}
-    Return ONLY JSON array. 'type' MUST be "${targetType}". All 'explanation' in Japanese.`;
+  const prompt = `Generate exactly ${count} Eiken ${grade.replace('_', ' ')} questions for ${section}. ${sectionPrompt} ${themeInjection} Return JSON array. All 'explanation' in Japanese.`;
 
   const ai = new GoogleGenAI({ apiKey });
   
@@ -132,15 +139,16 @@ export async function* streamQuestions(grade: EikenGrade, section: TargetSection
       yield { ...q, id: Math.random(), category: section, type: targetType };
     }
   } catch (error: any) {
-    console.error("GEMINI_STREAM_ERROR:", error);
+    console.error("GEMINI_API_ERROR:", error);
+    if (error.message?.includes("400") || error.message?.includes("API key not valid")) {
+      throw new Error("Google API Key Error: Please go to Google Cloud Console and enable the 'Generative Language API' for this project.");
+    }
     throw error;
   }
 }
 
 export async function remakeQuestion(grade: EikenGrade, original: Question): Promise<Question> {
-  const apiKey = process.env.API_KEY;
-  if (!apiKey) throw new Error("Missing API Key.");
-
+  const apiKey = getValidApiKey();
   const ai = new GoogleGenAI({ apiKey });
   const section = original.category as TargetSection;
   const targetType = TYPE_MAPPINGS[section] || original.type;
@@ -150,19 +158,21 @@ export async function remakeQuestion(grade: EikenGrade, original: Question): Pro
     sectionPrompt = grade === 'GRADE_5' ? GRADE_5_PART_3_PROMPT : GRADE_4_PART_3_PROMPT;
   }
   
-  const prompt = `Generate ONE new Eiken ${grade.replace('_', ' ')} question for ${section}. 
-  ${sectionPrompt} Return as JSON object. 'type' MUST be ${targetType}.`;
+  const prompt = `Generate ONE new Eiken ${grade.replace('_', ' ')} question for ${section}. ${sectionPrompt} Return as JSON object.`;
 
-  const response = await ai.models.generateContent({
-    model: 'gemini-3-flash-preview',
-    contents: prompt,
-    config: {
-      responseMimeType: "application/json",
-      responseSchema: questionSchema as any,
-      temperature: 1.0,
-    },
-  });
-
-  const newQ = extractJson(response.text);
-  return { ...newQ, id: original.id, category: original.category, type: targetType };
+  try {
+    const response = await ai.models.generateContent({
+      model: 'gemini-3-flash-preview',
+      contents: prompt,
+      config: {
+        responseMimeType: "application/json",
+        responseSchema: questionSchema as any,
+        temperature: 1.0,
+      },
+    });
+    const newQ = extractJson(response.text);
+    return { ...newQ, id: original.id, category: original.category, type: targetType };
+  } catch (error: any) {
+    throw error;
+  }
 }
