@@ -1,10 +1,8 @@
-
 import React from 'react';
 import ReactDOM from 'react-dom/client';
 import App from './App';
 
 // Define process.env shim for the browser.
-// We must be careful not to overwrite a valid process.env.API_KEY if the environment has already set it.
 const env = (import.meta as any).env || {};
 const existingProcess = (window as any).process || (globalThis as any).process || {};
 const existingEnv = existingProcess.env || {};

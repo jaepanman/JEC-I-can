@@ -38,6 +38,7 @@ export interface ExamResult {
   targetSection?: TargetSection;
   grade?: EikenGrade;
   newBadges?: Badge[]; // Tracks badges earned in THIS session
+  theme?: string; // The theme used for this session
 }
 
 export interface Badge {
@@ -59,11 +60,15 @@ export interface UserStats {
   lastRemakeDate: string;
   targetCompletions: Record<TargetSection, number>;
   examsTakenToday: number;
-  targetExamsTakenToday: number; // New: Tracks daily target practice sessions
+  targetExamsTakenToday: number;
   lastExamDate: string;
-  // Track which sections are completed for each theme
-  // Format: { "Animals": { "PART_1": true, "PART_2": false ... } }
-  thematicProgress?: Record<string, Record<string, boolean>>;
+  // Usage tracking for limits
+  scenarioUsesRemaining: number;
+  lastScenarioUseMonth: string; // YYYY-MM
+  dailyMockExamsCount: number;
+  dailyTargetPracticeCount: number;
+  lastActionDate: string; // YYYY-MM-DD
+  thematicProgress: Record<string, Record<string, boolean>>; // { "Shopping": { "PART_1": true, ... } }
 }
 
 export interface User {

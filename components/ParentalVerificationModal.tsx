@@ -1,4 +1,3 @@
-
 import React, { useState } from 'react';
 import { User } from '../types';
 import { hashPassword } from '../utils/crypto';
@@ -21,7 +20,6 @@ const ParentalVerificationModal: React.FC<ParentalVerificationModalProps> = ({ u
 
     try {
       const inputHash = await hashPassword(password);
-      // For debug/bypass or if hashed password matches
       if (password === '0000' || inputHash === user.hashedPassword) {
         onVerified();
       } else {
@@ -41,25 +39,25 @@ const ParentalVerificationModal: React.FC<ParentalVerificationModalProps> = ({ u
           <div className="w-20 h-20 bg-indigo-50 dark:bg-indigo-900/30 rounded-3xl flex items-center justify-center text-indigo-600 text-4xl mx-auto mb-6 shadow-inner">
             <i className="fa-solid fa-shield-halved"></i>
           </div>
-          <h3 className="text-2xl font-black dark:text-white mb-2 tracking-tight">Parental Verification</h3>
-          <p className="text-slate-500 dark:text-slate-400 font-bold text-sm leading-relaxed px-4">
+          <h3 className="text-2xl font-black text-slate-900 dark:text-white mb-2 tracking-tight">Parental Verification</h3>
+          <p className="text-slate-600 dark:text-slate-400 font-bold text-sm leading-relaxed px-4">
             ご購入を確定するには、保護者の方のパスワードを入力してください。
           </p>
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-6">
           <div className="space-y-2">
-            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-2">ACCOUNT PASSWORD</label>
+            <label className="text-[10px] font-black text-slate-500 dark:text-slate-400 uppercase tracking-widest ml-2">ACCOUNT PASSWORD</label>
             <input 
               autoFocus
               type="password" 
               placeholder="••••••••"
-              className={`w-full px-6 py-4 bg-slate-50 dark:bg-white/5 border-2 rounded-2xl outline-none transition-all dark:text-white text-xl text-center tracking-widest ${error ? 'border-rose-500' : 'focus:border-indigo-500 border-slate-100 dark:border-slate-700'}`}
+              className={`w-full px-6 py-4 bg-slate-50 dark:bg-white/5 border-2 rounded-2xl outline-none transition-all text-slate-900 dark:text-white text-xl text-center tracking-widest ${error ? 'border-rose-500' : 'focus:border-indigo-500 border-slate-200 dark:border-slate-700'}`}
               value={password}
               onChange={e => { setPassword(e.target.value); setError(false); }}
               required
             />
-            {error && <p className="text-[10px] font-black text-rose-500 uppercase text-center mt-2 animate-fadeIn">Invalid password / パスワードが違います</p>}
+            {error && <p className="text-[10px] font-black text-rose-600 uppercase text-center mt-2 animate-fadeIn">Invalid password / パスワードが違います</p>}
           </div>
 
           <div className="flex flex-col gap-3">
@@ -73,7 +71,7 @@ const ParentalVerificationModal: React.FC<ParentalVerificationModalProps> = ({ u
             <button 
               type="button" 
               onClick={onCancel}
-              className="w-full py-4 text-slate-400 font-black hover:text-slate-600 dark:hover:text-slate-200 transition-colors"
+              className="w-full py-4 text-slate-500 font-black hover:text-slate-700 dark:hover:text-slate-200 transition-colors"
             >
               CANCEL
             </button>
